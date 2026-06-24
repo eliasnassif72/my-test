@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="file:///home/user/my-test/carousel-studio/assets/base.css">
+  <style>
+    /* slide-level overrides go here */
+    .slide-inner { position: relative; z-index: 10; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<div class="slide" id="slide">
+  <div class="bg-radial"></div>
+  <div class="bg-dots"></div>
+  <div class="slide-inner">
+    
+    <div style="
+      position:absolute; inset:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      padding:80px;
+      gap:0;
+    ">
+      <!-- Top: step counter pill -->
+      <div class="pill t-overline" id="counter" style="margin-bottom:48px;">
+        Step 3 of 5
+      </div>
+
+      <!-- Main card -->
+      <div class="card w-full" id="card" style="max-width:900px;">
+        <div class="row gap-md" style="margin-bottom:36px;">
+          <div id="badge"><div class="step-badge">3</div></div>
+          <div id="icon"><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="zapier"></div></div>
+        </div>
+        <h2 class="t-headline" id="heading" style="color:#0F172A; margin-bottom:20px;">Zapier for Automation</h2>
+        <div class="accent-line" id="aline" style="background:var(--accent); margin-bottom:24px;"></div>
+        <p class="t-body" id="body">Connect 5000+ apps. No code needed.</p>
+      </div>
+    </div>
+    <div class="avatar" style="right: 0; bottom: 0; z-index: 20;">
+    <img src="file:///home/user/my-test/carousel-studio/assets/pose-placeholder.png" alt="avatar pointing">
+  </div>
+  
+  </div>
+</div>
+
+<script src="file:///home/user/my-test/carousel-studio/assets/gsap.min.js"></script>
+<script>
+// Seek support: ?render=<ms> jumps the timeline to that offset
+const params   = new URLSearchParams(location.search);
+const seekMs   = parseFloat(params.get('render') || '0');
+const DURATION = 3000;
+
+window.slideReady = false;   // render.sh polls this
+
+(function() {
+  const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+
+  // ── Timeline ──────────────────────────────────────────────────────────
+  
+    gsap.set(['#counter','#card','#badge','#icon','#heading','#aline','#body','.avatar img'],
+      { opacity:0, y:30 });
+
+    tl
+      .to('#counter',     { opacity:1, y:0, duration:.4 })
+      .to('#card',        { opacity:1, y:0, duration:.5 }, '-=.2')
+      .to('#badge',       { opacity:1, y:0, duration:.3 }, '-=.3')
+      .to('#icon',        { opacity:1, y:0, duration:.3 }, '-=.2')
+      .to('#heading',     { opacity:1, y:0, duration:.4 }, '-=.2')
+      .to('#aline',       { opacity:1, scaleX:1, duration:.35, transformOrigin:'left' }, '-=.1')
+      .to('#body',        { opacity:1, y:0, duration:.4 }, '-=.1')
+      .to('.avatar img',  { opacity:1, y:0, duration:.5, ease:'power2.out' }, '-=.3');
+  
+  // ─────────────────────────────────────────────────────────────────────
+
+  tl.totalDuration(); // force calculation
+
+  if (seekMs > 0) {
+    // Deterministic render mode: jump to requested time, stay frozen
+    tl.seek(seekMs / 1000, false);
+  } else {
+    tl.play();
+  }
+
+  window.slideReady = true;
+  window.slideTimeline = tl;
+  window.slideDuration = DURATION;
+})();
+</script>
+</body>
+</html>

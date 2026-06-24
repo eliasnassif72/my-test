@@ -1,0 +1,218 @@
+/* ═══════════════════════════════════════════════
+   CAROUSEL STUDIO — Design System
+   Change these 6 vars to fully rebrand.
+   ═══════════════════════════════════════════════ */
+:root {
+  --accent:        #3B82F6;   /* electric blue  */
+  --accent-glow:   #1D4ED8;   /* darker for glow shadows */
+  --bg-deep:       #0A0A0F;   /* canvas / outermost bg   */
+  --bg-plate:      #12121A;   /* dark headline plates    */
+  --bg-card:       #FFFFFF;   /* floating white tile      */
+  --text-on-dark:  #F8FAFC;   /* headlines on dark plate  */
+  --text-on-card:  #0F172A;   /* body copy on white card  */
+  --text-muted:    #64748B;   /* sub-labels, metadata     */
+  --font:          'Inter', 'Helvetica Neue', sans-serif;
+  --radius-card:   20px;
+  --radius-pill:   999px;
+}
+
+/* ── Reset ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Canvas — 1080 × 1350 (4:5 Instagram) ────── */
+html, body {
+  width: 1080px;
+  height: 1350px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Spatial radial background (always on) ────── */
+.bg-radial {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 900px 700px at 50% 30%,
+      color-mix(in srgb, var(--accent) 18%, transparent) 0%,
+      transparent 70%),
+    radial-gradient(ellipse 600px 400px at 80% 80%,
+      color-mix(in srgb, var(--accent-glow) 10%, transparent) 0%,
+      transparent 60%),
+    var(--bg-deep);
+  z-index: 0;
+}
+
+/* ── Floating grid dots (subtle depth) ──────── */
+.bg-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle, rgba(255,255,255,0.06) 1px, transparent 1px
+  );
+  background-size: 48px 48px;
+  z-index: 1;
+}
+
+/* ── Slide root ─────────────────────────────── */
+.slide {
+  position: relative;
+  width: 1080px;
+  height: 1350px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Dark headline plate ────────────────────── */
+.plate {
+  position: relative;
+  background: var(--bg-plate);
+  border: 1.5px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-card);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.03),
+    0 32px 80px rgba(0,0,0,0.6),
+    0 0 80px color-mix(in srgb, var(--accent) 15%, transparent);
+  padding: 60px 72px;
+  z-index: 10;
+}
+
+/* ── White floating tile ─────────────────────── */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  box-shadow:
+    0 4px 6px rgba(0,0,0,0.07),
+    0 24px 56px rgba(0,0,0,0.25),
+    0 0 0 1px rgba(255,255,255,0.8);
+  padding: 44px 52px;
+  z-index: 10;
+}
+
+/* ── Accent pill / badge ─────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 14px 36px;
+}
+
+/* ── Icon tile ───────────────────────────────── */
+.icon-tile {
+  width: 120px;
+  height: 120px;
+  border-radius: 28px;
+  background: var(--bg-plate);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.icon-tile img { width: 72px; height: 72px; object-fit: contain; }
+
+/* ── Typography scale ────────────────────────── */
+.t-overline {
+  font-size: 26px; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent);
+}
+.t-display {
+  font-size: 96px; font-weight: 900; line-height: 1.0;
+  color: var(--text-on-dark);
+}
+.t-headline {
+  font-size: 68px; font-weight: 800; line-height: 1.1;
+  color: var(--text-on-dark);
+}
+.t-title {
+  font-size: 52px; font-weight: 700; line-height: 1.2;
+  color: var(--text-on-card);
+}
+.t-body {
+  font-size: 38px; font-weight: 400; line-height: 1.5;
+  color: var(--text-on-card);
+}
+.t-muted {
+  font-size: 30px; font-weight: 400;
+  color: var(--text-muted);
+}
+.t-stat {
+  font-size: 140px; font-weight: 900; line-height: 1.0;
+  color: var(--text-on-dark);
+  letter-spacing: -0.04em;
+}
+.t-stat-unit {
+  font-size: 56px; font-weight: 700;
+  color: var(--accent);
+}
+
+/* ── Avatar container ────────────────────────── */
+.avatar {
+  position: absolute;
+  bottom: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+.avatar img {
+  height: 680px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 24px 48px rgba(0,0,0,0.5));
+}
+
+/* ── Accent line / divider ───────────────────── */
+.accent-line {
+  width: 80px; height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+  margin: 24px 0;
+}
+
+/* ── Number badge (for step slides) ─────────── */
+.step-badge {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 40px;
+  font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* ── CTA keyword highlight ───────────────────── */
+.keyword {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 12px;
+  padding: 4px 24px;
+  font-weight: 800;
+}
+
+/* ── Utility ─────────────────────────────────── */
+.z-bg    { z-index: 0; }
+.z-mid   { z-index: 10; }
+.z-top   { z-index: 20; }
+.center  { display: flex; align-items: center; justify-content: center; }
+.col     { display: flex; flex-direction: column; }
+.row     { display: flex; flex-direction: row; align-items: center; }
+.gap-sm  { gap: 24px; }
+.gap-md  { gap: 40px; }
+.gap-lg  { gap: 64px; }
+.w-full  { width: 100%; }
+.px-xl   { padding-left: 90px; padding-right: 90px; }

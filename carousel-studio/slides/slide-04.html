@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="file:///home/user/my-test/carousel-studio/assets/base.css">
+  <style>
+    /* slide-level overrides go here */
+    .slide-inner { position: relative; z-index: 10; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<div class="slide" id="slide">
+  <div class="bg-radial"></div>
+  <div class="bg-dots"></div>
+  <div class="slide-inner">
+    
+    <div style="
+      position:absolute; inset:0;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      padding:80px; text-align:center;
+    ">
+      <div class="plate col" id="plate" style="
+        gap:16px; align-items:center;
+        width:860px; padding:80px 72px;
+      ">
+        <div class="t-overline" style="margin-bottom:8px;" id="over">Average time saved</div>
+        <div style="display:flex; align-items:flex-end; gap:16px; line-height:1;">
+          <span class="t-stat" id="num">3h</span>
+          <span class="t-stat-unit" id="unit" style="margin-bottom:18px;">saved / day</span>
+        </div>
+        <div class="accent-line" id="aline" style="width:120px; margin:16px auto;"></div>
+        <p class="t-muted" id="source" style="font-size:26px;">McKinsey AI Productivity Report 2024</p>
+      </div>
+    </div>
+    <div class="avatar" style="right: 40px; bottom: 0;">
+    <img src="file:///home/user/my-test/carousel-studio/assets/pose-placeholder.png" alt="avatar victory">
+  </div>
+  
+  </div>
+</div>
+
+<script src="file:///home/user/my-test/carousel-studio/assets/gsap.min.js"></script>
+<script>
+// Seek support: ?render=<ms> jumps the timeline to that offset
+const params   = new URLSearchParams(location.search);
+const seekMs   = parseFloat(params.get('render') || '0');
+const DURATION = 3000;
+
+window.slideReady = false;   // render.sh polls this
+
+(function() {
+  const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+
+  // ── Timeline ──────────────────────────────────────────────────────────
+  
+    gsap.set(['#plate','#over','#num','#unit','#aline','#source','.avatar img'], { opacity:0 });
+    gsap.set('#num', { scale:0.7 });
+
+    tl
+      .to('#plate',     { opacity:1, duration:.4 })
+      .to('#over',      { opacity:1, y:0, duration:.35 }, '-=.2')
+      .to('#num',       { opacity:1, scale:1, duration:.5, ease:'back.out(1.4)' }, '-=.1')
+      .to('#unit',      { opacity:1, duration:.3 }, '-=.2')
+      .to('#aline',     { opacity:1, duration:.3 }, '-=.1')
+      .to('#source',    { opacity:1, duration:.3 }, '-=.1')
+      .to('.avatar img',{ opacity:1, y:0, duration:.5, ease:'power2.out' }, '-=.3');
+  
+  // ─────────────────────────────────────────────────────────────────────
+
+  tl.totalDuration(); // force calculation
+
+  if (seekMs > 0) {
+    // Deterministic render mode: jump to requested time, stay frozen
+    tl.seek(seekMs / 1000, false);
+  } else {
+    tl.play();
+  }
+
+  window.slideReady = true;
+  window.slideTimeline = tl;
+  window.slideDuration = DURATION;
+})();
+</script>
+</body>
+</html>

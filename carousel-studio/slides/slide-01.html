@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="file:///home/user/my-test/carousel-studio/assets/base.css">
+  <style>
+    /* slide-level overrides go here */
+    .slide-inner { position: relative; z-index: 10; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<div class="slide" id="slide">
+  <div class="bg-radial"></div>
+  <div class="bg-dots"></div>
+  <div class="slide-inner">
+    
+    <div class="icon-tile" id="icon0" style="
+      position:absolute;
+      left:50.0%;
+      top:21.9%;
+      transform:translate(-50%,-50%);
+      z-index:5;
+    "><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="notion"></div></div>
+<div class="icon-tile" id="icon1" style="
+      position:absolute;
+      left:83.5%;
+      top:41.3%;
+      transform:translate(-50%,-50%);
+      z-index:5;
+    "><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="chatgpt"></div></div>
+<div class="icon-tile" id="icon2" style="
+      position:absolute;
+      left:70.7%;
+      top:72.8%;
+      transform:translate(-50%,-50%);
+      z-index:5;
+    "><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="midjourney"></div></div>
+<div class="icon-tile" id="icon3" style="
+      position:absolute;
+      left:29.3%;
+      top:72.8%;
+      transform:translate(-50%,-50%);
+      z-index:5;
+    "><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="zapier"></div></div>
+<div class="icon-tile" id="icon4" style="
+      position:absolute;
+      left:16.5%;
+      top:41.3%;
+      transform:translate(-50%,-50%);
+      z-index:5;
+    "><div class="icon-tile"><img src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='%233B82F6'/></svg>" alt="grammarly"></div></div>
+    <div style="
+      position:absolute; left:50%; top:50%;
+      transform:translate(-50%,-50%);
+      width:780px;
+      z-index:10;
+    " id="plate">
+      <div class="plate col" style="gap:24px; text-align:center; align-items:center;">
+        <div class="pill t-overline" id="pill">5 AI Tools</div>
+        <h1 class="t-display" id="hl" style="text-align:center;">10x Your
+Productivity</h1>
+        <div class="accent-line" id="aline"></div>
+        <p class="t-muted" id="sub" style="font-size:34px; color:#94A3B8; max-width:580px; text-align:center;">Save 3 hours a day with these picks</p>
+      </div>
+    </div>
+    <div class="avatar" style="left: 30px; bottom: 0;">
+    <img src="file:///home/user/my-test/carousel-studio/assets/pose-placeholder.png" alt="avatar casual">
+  </div>
+  
+  </div>
+</div>
+
+<script src="file:///home/user/my-test/carousel-studio/assets/gsap.min.js"></script>
+<script>
+// Seek support: ?render=<ms> jumps the timeline to that offset
+const params   = new URLSearchParams(location.search);
+const seekMs   = parseFloat(params.get('render') || '0');
+const DURATION = 3000;
+
+window.slideReady = false;   // render.sh polls this
+
+(function() {
+  const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+
+  // ── Timeline ──────────────────────────────────────────────────────────
+  
+    gsap.set(['#plate','#pill','#hl','#aline','#sub'], { opacity:0 });
+    gsap.set('#icon0', { opacity:0, scale:0.6 });
+    gsap.set('#icon1', { opacity:0, scale:0.6 });
+    gsap.set('#icon2', { opacity:0, scale:0.6 });
+    gsap.set('#icon3', { opacity:0, scale:0.6 });
+    gsap.set('#icon4', { opacity:0, scale:0.6 });
+    gsap.set('.avatar img', { opacity:0, y:60 });
+
+    tl
+      .to('#plate',  { opacity:1, y:-20, duration:0 })
+      .to('#plate',  { y:0, duration:.6 })
+      .to('#pill',   { opacity:1, y:0, duration:.4 }, '-=.3')
+      .to('#hl',     { opacity:1, y:0, duration:.5 }, '-=.2')
+      .to('#aline',  { opacity:1, scaleX:1, duration:.4, transformOrigin:'left' }, '-=.1')
+      .to('#sub',    { opacity:1, y:0, duration:.4 }, '-=.1')
+      .to('.avatar img', { opacity:1, y:0, duration:.6, ease:'power2.out' }, '-=.4')
+      .to('#icon0', { opacity:1, scale:1, duration:.35 }, '-=.2')
+      .to('#icon1', { opacity:1, scale:1, duration:.35 }, '-=.2')
+      .to('#icon2', { opacity:1, scale:1, duration:.35 }, '-=.2')
+      .to('#icon3', { opacity:1, scale:1, duration:.35 }, '-=.2')
+      .to('#icon4', { opacity:1, scale:1, duration:.35 }, '-=.2');
+  
+  // ─────────────────────────────────────────────────────────────────────
+
+  tl.totalDuration(); // force calculation
+
+  if (seekMs > 0) {
+    // Deterministic render mode: jump to requested time, stay frozen
+    tl.seek(seekMs / 1000, false);
+  } else {
+    tl.play();
+  }
+
+  window.slideReady = true;
+  window.slideTimeline = tl;
+  window.slideDuration = DURATION;
+})();
+</script>
+</body>
+</html>

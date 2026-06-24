@@ -1,0 +1,59 @@
+{
+  "topic": "5 AI Tools That 10x Your Productivity",
+  "keyword": "TOOLS",
+  "handle": "@yourusername",
+  "slides": [
+    {
+      "type": "cover",
+      "overline": "5 AI Tools",
+      "headline": "10x Your\nProductivity",
+      "sub": "Save 3 hours a day with these picks",
+      "icons": ["notion", "chatgpt", "midjourney", "zapier", "grammarly"],
+      "pose": "casual"
+    },
+    {
+      "type": "step",
+      "step": 1,
+      "total": 5,
+      "icon": "chatgpt",
+      "heading": "ChatGPT for Writing",
+      "body": "Draft emails, reports & captions in seconds.",
+      "pose": "pointing"
+    },
+    {
+      "type": "step",
+      "step": 2,
+      "total": 5,
+      "icon": "notion",
+      "heading": "Notion AI for Docs",
+      "body": "Auto-summarize meetings. Never re-read notes.",
+      "pose": "pointing"
+    },
+    {
+      "type": "stat",
+      "stat": "3h",
+      "unit": "saved / day",
+      "label": "Average time saved",
+      "source": "McKinsey AI Productivity Report 2024",
+      "pose": "victory"
+    },
+    {
+      "type": "step",
+      "step": 3,
+      "total": 5,
+      "icon": "zapier",
+      "heading": "Zapier for Automation",
+      "body": "Connect 5000+ apps. No code needed.",
+      "pose": "pointing"
+    },
+    {
+      "type": "cta",
+      "keyword": "TOOLS",
+      "hook": "Want the full breakdown?",
+      "cta": "Comment TOOLS below",
+      "sub": "I'll DM you the free resource list",
+      "handle": "@yourusername",
+      "pose": "arms-crossed"
+    }
+  ]
+}
