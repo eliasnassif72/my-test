@@ -14,8 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         setSetting($pdo, 'api_key', bin2hex(random_bytes(20)));
         flash('success', 'تم توليد مفتاح جديد — حدّث الرابط في لوحة elias controle');
     } elseif ($action === 'fix_balances') {
-        $n = $pdo->exec("UPDATE wl_wallets w SET w.balance = (
-                SELECT COALESCE(SUM(t.amount), 0) FROM wl_transactions t WHERE t.wallet_id = w.id AND t.voided = 0)");
+        $n = wlRecalcBalances($pdo);
         flash('success', 'تمت إعادة احتساب الأرصدة من سجل الحركات (' . (int)$n . ' محفظة عُدّلت)');
     }
     redirect('settings.php');

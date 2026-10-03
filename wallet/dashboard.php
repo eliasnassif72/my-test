@@ -9,29 +9,17 @@ $monthName = arMonthName(date('Y-m'));
 if ($me['role'] === 'admin') {
     $main = wlMainWallet($pdo);
 
-    $st = $pdo->prepare("SELECT w.*, u.full_name AS owner_name, u.active AS user_active,
-            COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END), 0) AS month_spent,
-            COALESCE(SUM(CASE WHEN t.type='transfer_in' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END), 0) AS month_in,
-            MAX(CASE WHEN t.voided=0 THEN t.txn_date END) AS last_move
-        FROM wl_wallets w
-        LEFT JOIN wl_users u ON u.id = w.user_id
-        LEFT JOIN wl_transactions t ON t.wallet_id = w.id
-        WHERE w.is_main = 0
-        GROUP BY w.id, u.full_name, u.active
-        ORDER BY w.active DESC, w.name");
-    $st->execute([$monthFrom, $monthTo, $monthFrom, $monthTo]);
-    $wallets = $st->fetchAll();
-
+    $wallets = [];
     $usersTotal = 0; $monthSpent = 0; $monthFunded = 0;
-    foreach ($wallets as $w) {
+    foreach (wlWalletSummaries($pdo, $monthFrom, $monthTo) as $w) {
+        $monthSpent += (float)$w['month_spent'];
+        if ((int)$w['is_main'] === 1) {
+            continue;
+        }
+        $wallets[]    = $w;
         $usersTotal  += (float)$w['balance'];
-        $monthSpent  += (float)$w['month_spent'];
         $monthFunded += (float)$w['month_in'];
     }
-    // مصاريف مسجّلة مباشرة على الرئيسية (إن وُجدت)
-    $st = $pdo->prepare("SELECT COALESCE(SUM(-amount),0) FROM wl_transactions WHERE wallet_id=? AND type='expense' AND voided=0 AND txn_date BETWEEN ? AND ?");
-    $st->execute([$main['id'], $monthFrom, $monthTo]);
-    $monthSpent += (float)$st->fetchColumn();
 
     $catTotals = wlCategoryTotals($pdo, $monthFrom, $monthTo);
     $rows      = wlTxnQuery($pdo, [], 12);

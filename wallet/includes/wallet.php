@@ -51,7 +51,8 @@ function wlApply(PDO $pdo, array &$wallet, $delta, $type, array $o)
     if ($delta < 0 && $new < 0 && !wlAllowNegative($pdo)) {
         throw new WalletError('الرصيد غير كافٍ في «' . $wallet['name'] . '» — المتاح: ' . money($wallet['balance']));
     }
-    if ($delta < 0 && (int)$wallet['active'] !== 1) {
+    // المحفظة الموقوفة لا تقبل مصاريف جديدة، لكن يبقى بإمكان المدير إرجاع رصيدها للرئيسية
+    if ($type === 'expense' && (int)$wallet['active'] !== 1) {
         throw new WalletError('المحفظة «' . $wallet['name'] . '» موقوفة');
     }
     $pdo->prepare("UPDATE wl_wallets SET balance = ? WHERE id = ?")->execute([$new, $wallet['id']]);
@@ -160,21 +161,37 @@ function wlVoid(PDO $pdo, $txnId, $reason, $by)
         if (!$t) {
             throw new WalletError('الحركة غير موجودة');
         }
-        if ((int)$t['voided'] === 1) {
-            throw new WalletError('الحركة ملغاة مسبقاً');
+        // اقفل المحافظ المعنية أولاً (بنفس ترتيب wlApply) ثم أعد قراءة الحركة تحت القفل،
+        // حتى لا يمرّ إلغاءان متزامنان لنفس الحركة.
+        $walletIds = [(int)$t['wallet_id']];
+        if ($t['ref'] && $t['counter_wallet_id']) {
+            $walletIds[] = (int)$t['counter_wallet_id'];
         }
-        $legs = [$t];
+        $wallets = wlLock($pdo, $walletIds);
+
         if ($t['ref']) {
-            $st = $pdo->prepare("SELECT * FROM wl_transactions WHERE ref = ? AND voided = 0");
+            $st = $pdo->prepare("SELECT * FROM wl_transactions WHERE ref = ? FOR UPDATE");
             $st->execute([$t['ref']]);
-            $legs = $st->fetchAll();
+        } else {
+            $st = $pdo->prepare("SELECT * FROM wl_transactions WHERE id = ? FOR UPDATE");
+            $st->execute([(int)$t['id']]);
         }
-        $wallets = wlLock($pdo, array_column($legs, 'wallet_id'));
+        $legs = $st->fetchAll();
+        foreach ($legs as $leg) {
+            if ((int)$leg['voided'] === 1) {
+                throw new WalletError('الحركة ملغاة مسبقاً');
+            }
+            if (!isset($wallets[(int)$leg['wallet_id']])) {
+                throw new WalletError('بيانات التحويل غير متطابقة');
+            }
+        }
+
         $allowNeg = wlAllowNegative($pdo);
         foreach ($legs as $leg) {
             $w   = &$wallets[(int)$leg['wallet_id']];
             $new = round((float)$w['balance'] - (float)$leg['amount'], 2);
-            if ($new < 0 && !$allowNeg) {
+            // نتحقق فقط عندما يُنقص الإلغاءُ الرصيد (عكس تغذية/إيداع) — عكس المصروف يزيده دائماً
+            if ((float)$leg['amount'] > 0 && $new < 0 && !$allowNeg) {
                 throw new WalletError('لا يمكن الإلغاء: رصيد «' . $w['name'] . '» لا يكفي لعكس الحركة (المتاح ' . money($w['balance']) . ')');
             }
             $pdo->prepare("UPDATE wl_wallets SET balance = ? WHERE id = ?")->execute([$new, $w['id']]);
@@ -185,6 +202,44 @@ function wlVoid(PDO $pdo, $txnId, $reason, $by)
         }
         return count($legs);
     });
+}
+
+// إعادة احتساب كل الأرصدة من سجل الحركات (مع قفل المحافظ)
+function wlRecalcBalances(PDO $pdo)
+{
+    return wlRun($pdo, function () use ($pdo) {
+        $pdo->query("SELECT id FROM wl_wallets FOR UPDATE")->fetchAll();
+        return $pdo->exec("UPDATE wl_wallets w SET w.balance = (
+                SELECT COALESCE(SUM(t.amount), 0) FROM wl_transactions t WHERE t.wallet_id = w.id AND t.voided = 0)");
+    });
+}
+
+// ملخص كل المحافظ لفترة — مصدر واحد للداشبورد والويدجت والـ API
+function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId = null)
+{
+    $sql = "SELECT w.id, w.user_id, w.name, w.is_main, w.balance, w.active,
+               u.full_name AS owner, u.username,
+               COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_spent,
+               COALESCE(SUM(CASE WHEN t.amount>0 AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
+               MAX(CASE WHEN t.voided=0 THEN t.txn_date END) AS last_move,
+               MAX(CASE WHEN t.voided=0 THEN t.created_at END) AS last_activity
+            FROM wl_wallets w
+            LEFT JOIN wl_users u ON u.id = w.user_id
+            LEFT JOIN wl_transactions t ON t.wallet_id = w.id
+            WHERE 1=1";
+    $p = [$from, $to, $from, $to];
+    if ($activeOnly) {
+        $sql .= " AND w.active = 1";
+    }
+    if ($walletId) {
+        $sql .= " AND w.id = ?";
+        $p[] = (int)$walletId;
+    }
+    $sql .= " GROUP BY w.id, w.user_id, w.name, w.is_main, w.balance, w.active, u.full_name, u.username
+              ORDER BY w.is_main DESC, w.active DESC, w.name";
+    $st = $pdo->prepare($sql);
+    $st->execute($p);
+    return $st->fetchAll();
 }
 
 // فحص تطابق الأرصدة المخزنة مع مجموع الحركات
@@ -252,7 +307,7 @@ function wlSaveReceipt($file)
 }
 
 // جلب الحركات مع الفلاتر: wallet_id, type, category_id, from, to, voided(0/1/null), q, user_id(محفظة مستخدم)
-function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
+function wlTxnWhere(array $f)
 {
     $where = ['1=1'];
     $p = [];
@@ -288,6 +343,26 @@ function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
         $where[] = 't.note LIKE ?';
         $p[] = '%' . $f['q'] . '%';
     }
+    return [implode(' AND ', $where), $p];
+}
+
+// مجاميع الحركات غير الملغاة لكامل الفلتر (لا تتأثر بحد العرض)
+function wlTxnTotals(PDO $pdo, array $f)
+{
+    list($where, $p) = wlTxnWhere($f);
+    $st = $pdo->prepare("SELECT
+            COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS inflow,
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN -t.amount END), 0) AS spent,
+            COALESCE(SUM(CASE WHEN t.amount < 0 AND t.type <> 'expense' THEN -t.amount END), 0) AS outflow,
+            COUNT(*) AS cnt
+        FROM wl_transactions t WHERE $where AND t.voided = 0");
+    $st->execute($p);
+    return $st->fetch();
+}
+
+function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
+{
+    list($where, $p) = wlTxnWhere($f);
     $sql = "SELECT t.*, w.name AS wallet_name, w.is_main,
                    c.name AS cat_name, c.icon AS cat_icon,
                    cw.name AS counter_name, u.full_name AS creator_name
@@ -296,7 +371,7 @@ function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
             LEFT JOIN wl_categories c ON c.id = t.category_id
             LEFT JOIN wl_wallets cw ON cw.id = t.counter_wallet_id
             LEFT JOIN wl_users u ON u.id = t.created_by
-            WHERE " . implode(' AND ', $where) . "
+            WHERE $where
             ORDER BY t.txn_date DESC, t.id DESC";
     if ($limit) {
         $sql .= ' LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset;

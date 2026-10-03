@@ -40,16 +40,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $role = post('role') === 'admin' ? 'admin' : 'user';
             if ($name === '') throw new WalletError('أدخل الاسم الكامل');
             if ($id === (int)$me['id'] && $role !== 'admin') throw new WalletError('لا يمكنك إزالة صلاحية المدير عن نفسك');
+            $pass = isset($_POST['password']) ? (string)$_POST['password'] : '';
+            if ($pass !== '' && strlen($pass) < 6) throw new WalletError('كلمة المرور 6 أحرف على الأقل — لم يُحفظ أي تعديل');
+            $pdo->beginTransaction();
             $pdo->prepare("UPDATE wl_users SET full_name = ?, phone = ?, role = ? WHERE id = ?")
                 ->execute([$name, post('phone') ?: null, $role, $id]);
             if (post('wallet_name') !== '') {
                 $pdo->prepare("UPDATE wl_wallets SET name = ? WHERE user_id = ?")->execute([post('wallet_name'), $id]);
             }
-            $pass = isset($_POST['password']) ? (string)$_POST['password'] : '';
             if ($pass !== '') {
-                if (strlen($pass) < 6) throw new WalletError('كلمة المرور 6 أحرف على الأقل');
                 $pdo->prepare("UPDATE wl_users SET password_hash = ? WHERE id = ?")->execute([password_hash($pass, PASSWORD_DEFAULT), $id]);
             }
+            $pdo->commit();
             flash('success', 'تم حفظ التعديلات');
         } elseif ($action === 'toggle') {
             $id = (int)post('id');

@@ -38,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = 'اختر المحفظة';
     } elseif ($amount === null) {
         $err = 'أدخل مبلغاً صحيحاً أكبر من صفر';
-    } elseif (!validDate($form['date'])) {
-        $err = 'تاريخ غير صحيح';
+    } elseif (!validDate($form['date']) || $form['date'] > date('Y-m-d')) {
+        $err = 'تاريخ غير صحيح (لا يمكن أن يكون في المستقبل)';
     }
     if (!$err) {
         try {
@@ -100,7 +100,7 @@ require __DIR__ . '/includes/header.php';
       <select name="wallet_id">
         <option value="">— اختر —</option>
         <?php foreach ($wallets as $w): ?>
-          <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $form['wallet_id'] ? 'selected' : '' ?> <?= (int)$w['active'] !== 1 ? 'disabled' : '' ?>>
+          <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $form['wallet_id'] ? 'selected' : '' ?> data-off="<?= (int)$w['active'] !== 1 ? 1 : 0 ?>">
             <?= e($w['name']) ?> — <?= e(money($w['balance'])) ?><?= (int)$w['active'] !== 1 ? ' (موقوفة)' : '' ?>
           </option>
         <?php endforeach; ?>
@@ -112,7 +112,7 @@ require __DIR__ . '/includes/header.php';
       <input class="big" type="text" name="amount" inputmode="decimal" data-money value="<?= e($form['amount']) ?>" placeholder="0" required autocomplete="off">
     </div>
     <div class="grid g2">
-      <div class="form-row"><label>التاريخ</label><input type="date" name="date" value="<?= e($form['date']) ?>" required></div>
+      <div class="form-row"><label>التاريخ</label><input type="date" name="date" value="<?= e($form['date']) ?>" max="<?= date('Y-m-d') ?>" required></div>
       <div class="form-row"><label>ملاحظة</label><input type="text" name="note" maxlength="500" value="<?= e($form['note']) ?>" placeholder="مثال: سلفة مصاريف شهر تشرين"></div>
     </div>
     <button class="btn btn-block">تنفيذ</button>
@@ -125,7 +125,13 @@ require __DIR__ . '/includes/header.php';
     var op = (f.querySelector('input[name=op]:checked') || {}).value;
     var need = op === 'topup' || op === 'return';
     row.style.display = need ? '' : 'none';
-    row.querySelector('select').required = need;
+    var sel = row.querySelector('select');
+    sel.required = need;
+    // المحفظة الموقوفة: يُسمح فقط بإرجاع رصيدها للرئيسية
+    sel.querySelectorAll('option[data-off="1"]').forEach(function (o) {
+      o.disabled = op !== 'return';
+      if (o.disabled && o.selected) sel.value = '';
+    });
   }
   f.querySelectorAll('input[name=op]').forEach(function (r) { r.addEventListener('change', sync); });
   sync();

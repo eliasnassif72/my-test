@@ -13,14 +13,7 @@ header('Cache-Control: no-store');
 
 $from = date('Y-m-01');
 $to   = date('Y-m-t');
-$st = $pdo->prepare("SELECT w.id, w.name, w.is_main, w.balance,
-        COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_spent
-    FROM wl_wallets w LEFT JOIN wl_transactions t ON t.wallet_id = w.id
-    WHERE w.active = 1
-    GROUP BY w.id, w.name, w.is_main, w.balance
-    ORDER BY w.is_main DESC, w.name");
-$st->execute([$from, $to]);
-$rows = $st->fetchAll();
+$rows = wlWalletSummaries($pdo, $from, $to);
 $main = null; $list = []; $sumW = 0; $sumSpent = 0;
 foreach ($rows as $r) {
     $sumSpent += $r['month_spent'];
@@ -46,7 +39,7 @@ foreach ($rows as $r) {
   </div>
   <div class="grid wallets">
     <?php foreach ($list as $w): ?>
-      <div class="wcard <?= $w['balance'] <= 0 ? 'low' : '' ?>">
+      <div class="wcard <?= (int)$w['active'] !== 1 ? 'off' : '' ?> <?= $w['balance'] <= 0 ? 'low' : '' ?>">
         <div class="wname">👤 <?= e($w['name']) ?></div>
         <div class="wbal num <?= $w['balance'] < 0 ? 'neg' : '' ?>"><?= e(money($w['balance'])) ?></div>
         <div class="wmeta">مصروف الشهر: <b class="num"><?= e(money($w['month_spent'], false)) ?></b></div>

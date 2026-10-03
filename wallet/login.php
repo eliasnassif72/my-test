@@ -18,7 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $st->execute([post('username')]);
         $u = $st->fetch();
         $pass = isset($_POST['password']) ? (string)$_POST['password'] : '';
-        if ($u && (int)$u['active'] === 1 && password_verify($pass, $u['password_hash'])) {
+        $passOk = $u && password_verify($pass, $u['password_hash']);
+        if ($passOk && (int)$u['active'] === 1) {
             session_regenerate_id(true);
             $_SESSION['wl_uid'] = (int)$u['id'];
             $pdo->prepare("DELETE FROM wl_login_attempts WHERE ip_address = ?")->execute([$ip]);
@@ -30,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('dashboard.php');
         }
         $pdo->prepare("INSERT INTO wl_login_attempts (ip_address, attempted_at) VALUES (?, NOW())")->execute([$ip]);
-        $err = ($u && (int)$u['active'] !== 1) ? 'الحساب موقوف — راجع مدير النظام' : 'اسم المستخدم أو كلمة المرور غير صحيحة';
+        $err = $passOk ? 'الحساب موقوف — راجع مدير النظام' : 'اسم المستخدم أو كلمة المرور غير صحيحة';
     }
 }
 $pageTitle = 'تسجيل الدخول';

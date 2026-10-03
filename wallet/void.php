@@ -7,7 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 csrfCheck();
 $back = post('back');
 // إعادة التوجيه داخل التطبيق فقط
-if ($back === '' || !preg_match('#^/[^/\\\\]#', $back)) {
+if (!preg_match('#^/(?![/\\\\])[A-Za-z0-9_\-./?=&%+]*$#', $back)) {
     $back = 'transactions.php';
 }
 try {

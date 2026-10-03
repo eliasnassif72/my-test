@@ -37,13 +37,8 @@ if (get('export') === 'csv') {
 }
 
 $rows = wlTxnQuery($pdo, $f, 500);
-$sumIn = 0; $sumExp = 0; $sumOut = 0;
-foreach ($rows as $r) {
-    if ((int)$r['voided'] === 1) continue;
-    if ($r['amount'] > 0) $sumIn += $r['amount'];
-    elseif ($r['type'] === 'expense') $sumExp += -$r['amount'];
-    else $sumOut += -$r['amount'];
-}
+$tot = wlTxnTotals($pdo, $f);
+$sumIn = (float)$tot['inflow']; $sumExp = (float)$tot['spent']; $sumOut = (float)$tot['outflow'];
 $catTotals = ($f['type'] === '' || $f['type'] === 'expense')
     ? wlCategoryTotals($pdo, $f['from'], $f['to'], $f['wallet_id'] ?: null) : [];
 if ($f['category_id']) {

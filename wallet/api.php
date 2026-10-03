@@ -26,34 +26,20 @@ if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $ym)) {
 $from = $ym . '-01';
 $to   = date('Y-m-t', strtotime($from));
 
-$sql = "SELECT w.id, w.name, w.is_main, w.balance, w.active, u.full_name AS owner, u.username,
-          COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_expenses,
-          COALESCE(SUM(CASE WHEN t.amount>0 AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
-          MAX(CASE WHEN t.voided=0 THEN t.created_at END) AS last_activity
-        FROM wl_wallets w
-        LEFT JOIN wl_users u ON u.id = w.user_id
-        LEFT JOIN wl_transactions t ON t.wallet_id = w.id";
-$p = [$from, $to, $from, $to];
-if (get('wallet') !== '') {
-    $sql .= " WHERE w.id = ?";
-    $p[] = (int)get('wallet');
-}
-$sql .= " GROUP BY w.id, w.name, w.is_main, w.balance, w.active, u.full_name, u.username ORDER BY w.is_main DESC, w.name";
-$st = $pdo->prepare($sql);
-$st->execute($p);
+$rows = wlWalletSummaries($pdo, $from, $to, false, get('wallet') !== '' ? (int)get('wallet') : null);
 
 $main = null;
 $wallets = [];
 $totalUsers = 0;
 $totalExp = 0;
-foreach ($st->fetchAll() as $r) {
+foreach ($rows as $r) {
     $item = [
         'id'             => (int)$r['id'],
         'name'           => $r['name'],
         'owner'          => $r['owner'],
         'username'       => $r['username'],
         'balance'        => (float)$r['balance'],
-        'month_expenses' => (float)$r['month_expenses'],
+        'month_expenses' => (float)$r['month_spent'],
         'month_in'       => (float)$r['month_in'],
         'active'         => (int)$r['active'] === 1,
         'last_activity'  => $r['last_activity'],
