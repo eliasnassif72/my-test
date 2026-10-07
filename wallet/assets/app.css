@@ -104,7 +104,7 @@ h2 { font-size: 1.15rem; margin: 0 0 12px; }
 /* نماذج */
 .form-row { margin-bottom: 14px; }
 label { display: block; font-weight: 700; margin-bottom: 5px; font-size: .92rem; }
-input[type=text], input[type=password], input[type=date], input[type=number], input[type=month], select, textarea {
+input[type=text], input[type=search], input[type=password], input[type=date], input[type=number], input[type=month], select, textarea {
   width: 100%; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 10px; background: #fff; color: var(--ink);
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary-2); box-shadow: 0 0 0 3px rgba(20,184,166,.18); }

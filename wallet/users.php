@@ -53,6 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (post('wallet_name') !== '') {
                 $pdo->prepare("UPDATE wl_wallets SET name = ? WHERE user_id = ?")->execute([post('wallet_name'), $id]);
             }
+            $pdo->prepare("UPDATE wl_wallets SET account_no = ?, account_name = ? WHERE user_id = ?")
+                ->execute([preg_replace('/[^0-9A-Za-z]/', '', post('account_no')) ?: null, mb_substr(post('account_name'), 0, 120) ?: null, $id]);
             if ($pass !== '') {
                 $pdo->prepare("UPDATE wl_users SET password_hash = ? WHERE id = ?")->execute([password_hash($pass, PASSWORD_DEFAULT), $id]);
             }
@@ -92,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('users.php');
 }
 
-$all = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance, w.currency,
+$all = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance, w.currency, w.account_no, w.account_name,
                            COALESCE(w.archived, 0) AS archived, w.archived_at,
                            (SELECT COUNT(*) FROM wl_transactions t
                              WHERE t.created_by = u.id OR t.wallet_id = w.id OR t.counter_wallet_id = w.id) AS txn_count
@@ -133,6 +135,10 @@ require __DIR__ . '/includes/header.php';
         <div class="form-row"><label>الهاتف</label><input type="text" name="phone" value="<?= e($edit['phone']) ?>" dir="ltr"></div>
         <?php if ($edit['wallet_id']): ?>
           <div class="form-row"><label>اسم المحفظة</label><input type="text" name="wallet_name" value="<?= e($edit['wallet_name']) ?>"></div>
+          <div class="grid g2">
+            <div class="form-row"><label>رقم حساب السلفة (المحاسبة)</label><input type="text" name="account_no" value="<?= e($edit['account_no']) ?>" dir="ltr" placeholder="1631001"></div>
+            <div class="form-row"><label>اسم الحساب</label><input type="text" name="account_name" value="<?= e($edit['account_name']) ?>" placeholder="سلف امين الجندي"></div>
+          </div>
         <?php endif; ?>
         <div class="form-row"><label>الصلاحية</label>
           <select name="role">
@@ -179,7 +185,7 @@ require __DIR__ . '/includes/header.php';
       <tbody>
       <?php foreach ($users as $u): ?>
         <tr style="<?= (int)$u['active'] !== 1 ? 'opacity:.55' : '' ?>">
-          <td><b><?= e($u['full_name']) ?></b><div class="sub" dir="ltr" style="text-align:right"><?= e($u['username']) ?></div></td>
+          <td><b><?= e($u['full_name']) ?></b><div class="sub" dir="ltr" style="text-align:right"><?= e($u['username']) ?><?= $u['account_no'] ? ' · ' . e($u['account_no']) : '' ?></div></td>
           <td><?= $u['role'] === 'admin' ? '<span class="pill p-transfer_out">مدير</span>' : '<span class="pill p-deposit">مستخدم</span>' ?>
               <?= (int)$u['active'] !== 1 ? '<br><span class="pill p-void">موقوف</span>' : '' ?></td>
           <td class="num"><?php if ($u['wallet_id']): ?><a href="wallet.php?id=<?= (int)$u['wallet_id'] ?>"><?= e(money($u['balance'], true, $u['currency'])) ?></a><?php else: ?>

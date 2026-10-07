@@ -19,7 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'rename') {
             $name = mb_substr(post('name'), 0, 120);
             if ($name === '') throw new WalletError('أدخل الاسم');
-            $pdo->prepare("UPDATE wl_wallets SET name = ? WHERE id = ? AND is_main = 1")->execute([$name, (int)post('id')]);
+            $pdo->prepare("UPDATE wl_wallets SET name = ?, account_no = ?, account_name = ? WHERE id = ? AND is_main = 1")
+                ->execute([$name, preg_replace('/[^0-9A-Za-z]/', '', post('account_no')) ?: null, mb_substr(post('account_name'), 0, 120) ?: null, (int)post('id')]);
             flash('success', 'تم تغيير الاسم');
         } elseif ($action === 'archive_treasury') {
             $w = wlGetWallet($pdo, (int)post('id'));
@@ -80,9 +81,12 @@ require __DIR__ . '/includes/header.php';
       <?php if ($t['currency'] !== $base && currencyRate($t['currency']) > 0): ?>
         <div class="wmeta">≈ <span class="num"><?= e(money($t['balance'] * currencyRate($t['currency']))) ?></span></div>
       <?php endif; ?>
-      <form method="post" style="display:flex;gap:6px;margin-top:8px">
+      <form method="post" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
         <?= csrfField() ?><input type="hidden" name="action" value="rename"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
-        <input type="text" name="name" value="<?= e($t['name']) ?>" style="padding:5px 8px"><button class="btn btn-gray btn-sm">حفظ</button>
+        <input type="text" name="name" value="<?= e($t['name']) ?>" style="padding:5px 8px;grid-column:1/-1" title="الاسم">
+        <input type="text" name="account_no" value="<?= e($t['account_no']) ?>" placeholder="رقم الحساب" dir="ltr" style="padding:5px 8px">
+        <input type="text" name="account_name" value="<?= e($t['account_name']) ?>" placeholder="اسم الحساب بالمحاسبة" style="padding:5px 8px">
+        <button class="btn btn-gray btn-sm" style="grid-column:1/-1">حفظ</button>
       </form>
       <div class="actions" style="margin-top:8px">
         <a class="btn btn-light btn-sm" href="fund.php?op=deposit&wallet=<?= (int)$t['id'] ?>">إيداع</a>

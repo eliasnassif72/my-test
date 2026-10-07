@@ -317,7 +317,7 @@ function wlRecalcBalances(PDO $pdo)
 // ملخص كل المحافظ لفترة — مصدر واحد للداشبورد والويدجت والـ API
 function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId = null, $withArchived = false)
 {
-    $sql = "SELECT w.id, w.user_id, w.name, w.currency, w.is_main, w.balance, w.active, w.archived,
+    $sql = "SELECT w.id, w.user_id, w.name, w.currency, w.account_no, w.account_name, w.is_main, w.balance, w.active, w.archived,
                u.full_name AS owner, u.username,
                COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_spent,
                COALESCE(SUM(CASE WHEN t.amount>0 AND t.type<>'opening' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
@@ -340,7 +340,7 @@ function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId 
         $sql .= " AND w.id = ?";
         $p[] = (int)$walletId;
     }
-    $sql .= " GROUP BY w.id, w.user_id, w.name, w.currency, w.is_main, w.balance, w.active, w.archived, u.full_name, u.username
+    $sql .= " GROUP BY w.id, w.user_id, w.name, w.currency, w.account_no, w.account_name, w.is_main, w.balance, w.active, w.archived, u.full_name, u.username
               ORDER BY w.is_main DESC, w.active DESC, w.name";
     $st = $pdo->prepare($sql);
     $st->execute($p);
@@ -573,7 +573,7 @@ function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
     list($where, $p) = wlTxnWhere($f);
     $sql = "SELECT t.*, w.name AS wallet_name, w.is_main, w.currency,
                    cw.currency AS counter_currency, ct.amount AS counter_amount,
-                   c.name AS cat_name, c.icon AS cat_icon,
+                   c.name AS cat_name, c.icon AS cat_icon, c.account_no AS cat_acc,
                    cw.name AS counter_name, u.full_name AS creator_name
             FROM wl_transactions t
             JOIN wl_wallets w ON w.id = t.wallet_id

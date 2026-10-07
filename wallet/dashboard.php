@@ -106,6 +106,7 @@ require __DIR__ . '/includes/header.php';
     <a href="transactions.php?from=<?= e($monthFrom) ?>&to=<?= e($monthTo) ?>"><span>📊</span>تقرير الشهر</a>
     <a href="users.php"><span>👥</span>إضافة مستخدم</a>
     <a href="opening.php"><span>📌</span>رصيد أول المدة</a>
+    <a href="voucher.php"><span>📤</span>تصدير سند</a>
   </div>
 
   <div class="card">

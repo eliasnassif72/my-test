@@ -24,11 +24,11 @@ if (get('export') === 'csv') {
     header('Content-Disposition: attachment; filename="transactions_' . $f['from'] . '_' . $f['to'] . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['#', 'التاريخ', 'المحفظة', 'النوع', 'التصنيف', 'الطرف الآخر', 'المبلغ', 'العملة', 'سعر الصرف', 'المعادل بـ' . baseCurrency(), 'الرصيد بعدها', 'ملاحظة', 'بواسطة', 'الحالة']);
+    fputcsv($out, ['#', 'التاريخ', 'المحفظة', 'النوع', 'التصنيف', 'رقم الحساب', 'الطرف الآخر', 'المبلغ', 'العملة', 'سعر الصرف', 'المعادل بـ' . baseCurrency(), 'الرصيد بعدها', 'ملاحظة', 'بواسطة', 'الحالة']);
     foreach ($rows as $r) {
         fputcsv($out, [
             $r['id'], $r['txn_date'], $r['wallet_name'], txnTypeLabel($r['type']),
-            $r['cat_name'], $r['counter_name'], $r['amount'], $r['currency'], $r['fx_rate'], $r['base_amount'], $r['balance_after'],
+            $r['cat_name'], $r['cat_acc'], $r['counter_name'], $r['amount'], $r['currency'], $r['fx_rate'], $r['base_amount'], $r['balance_after'],
             $r['note'], $r['creator_name'], (int)$r['voided'] === 1 ? 'ملغاة' : '',
         ]);
     }
@@ -62,7 +62,7 @@ $pageTitle = 'الحركات';
 $active = 'transactions';
 require __DIR__ . '/includes/header.php';
 ?>
-<h1>📒 الحركات والتقارير</h1>
+<h1>📒 الحركات والتقارير <?php if ($admin): ?><a class="btn btn-light btn-sm" style="float:left" href="voucher.php?<?= e(http_build_query(['wallet' => $f['wallet_id'] ?: '', 'from' => $f['from'], 'to' => $f['to']])) ?>">📤 تصدير سند للمحاسبة</a><?php endif; ?></h1>
 <form class="card filters" method="get">
   <?php if ($admin): ?>
   <div class="form-row"><label>المحفظة</label>

@@ -27,7 +27,7 @@ foreach ($rows as $r) {
 <meta http-equiv="refresh" content="120">
 <title>أرصدة المحافظ</title>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/app.css?v=2">
+<link rel="stylesheet" href="assets/app.css?v=3">
 <style>body{background:transparent}.wrap{padding:8px}.wcard{cursor:default}.wcard:hover{transform:none}</style>
 </head>
 <body>

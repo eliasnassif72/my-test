@@ -79,6 +79,7 @@ require __DIR__ . '/includes/header.php';
   <?php endif; ?>
   <a class="btn btn-light" href="expense.php<?= $admin ? '?wallet=' . (int)$wallet['id'] : '' ?>">➖ تسجيل مصروف</a>
   <?php if ($admin): ?>
+    <a class="btn" href="voucher.php?wallet=<?= (int)$wallet['id'] ?>&from=<?= e($from) ?>&to=<?= e($to) ?>">📤 تصدير سند</a>
     <a class="btn btn-light" href="opening.php?wallet=<?= (int)$wallet['id'] ?>">📌 رصيد أول المدة</a>
     <?php if (!$wallet['is_main']): ?><a class="btn btn-gray" href="archive.php?wallet=<?= (int)$wallet['id'] ?>">📦 تسليم العهدة</a><?php endif; ?>
   <?php endif; ?>

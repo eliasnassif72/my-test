@@ -27,7 +27,7 @@ if ($__u) {
 <title><?= e(isset($pageTitle) ? $pageTitle . ' — ' . $__app : $__app) ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/app.css?v=2">
+<link rel="stylesheet" href="assets/app.css?v=3">
 </head>
 <body>
 <?php if ($__u): ?>

@@ -13,6 +13,26 @@ if ($admin) {
     $walletList = [wlGetWallet($pdo, $me['wallet_id'])];
 }
 $cats = $pdo->query("SELECT * FROM wl_categories WHERE active = 1 ORDER BY sort_order, name")->fetchAll();
+// تجميع التصنيفات حسب الحساب الأب (المجموعات مرتّبة حسب أكثر استخداماً)
+$groups = [];
+foreach ($cats as $c) {
+    $g = $c['group_name'] ?: 'أخرى';
+    $groups[$g][] = $c;
+}
+// اقتراحات البيان لكل تصنيف: من سجل الاستخدام الفعلي أولاً ثم من الاقتراحات المستوردة
+$hints = [];
+$st = $pdo->query("SELECT category_id, note, COUNT(*) AS n FROM wl_transactions
+                   WHERE type = 'expense' AND voided = 0 AND note IS NOT NULL AND note <> '' AND CHAR_LENGTH(note) <= 60
+                     AND txn_date >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)
+                   GROUP BY category_id, note ORDER BY n DESC");
+foreach ($st as $r) {
+    $hints[(int)$r['category_id']][] = $r['note'];
+}
+foreach ($cats as $c) {
+    $own = isset($hints[(int)$c['id']]) ? $hints[(int)$c['id']] : [];
+    $seed = $c['hints'] ? explode("\n", $c['hints']) : [];
+    $hints[(int)$c['id']] = array_slice(array_values(array_unique(array_merge($own, $seed))), 0, 10);
+}
 
 $form = [
     'wallet_id'   => $admin ? (int)get('wallet', 0) : (int)$me['wallet_id'],
@@ -97,10 +117,19 @@ require __DIR__ . '/includes/header.php';
     </div>
 
     <div class="form-row">
-      <label>التصنيف</label>
-      <div class="cats">
-        <?php foreach ($cats as $c): ?>
-          <label><input type="radio" name="category_id" value="<?= (int)$c['id'] ?>" <?= (int)$c['id'] === $form['category_id'] ? 'checked' : '' ?> required><span><?= e($c['icon']) ?> <?= e($c['name']) ?></span></label>
+      <label>التصنيف (حساب المصروف)</label>
+      <input type="search" id="catSearch" placeholder="🔍 ابحث بالاسم أو رقم الحساب — مثال: بنزين أو 339001" autocomplete="off" style="margin-bottom:8px">
+      <div id="catPicked" class="alert alert-success" style="display:none;margin-bottom:8px"></div>
+      <div id="catGroups" style="max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:8px">
+        <?php foreach ($groups as $gname => $list): ?>
+          <div class="cat-group">
+            <div class="sub" style="font-weight:700;margin:6px 2px"><?= e($gname) ?></div>
+            <div class="cats">
+              <?php foreach ($list as $c): ?>
+                <label data-q="<?= e(mb_strtolower($c['name'] . ' ' . $c['account_no'] . ' ' . $gname)) ?>" data-label="<?= e(($c['account_no'] ? $c['account_no'] . ' — ' : '') . $c['name']) ?>"><input type="radio" name="category_id" value="<?= (int)$c['id'] ?>" <?= (int)$c['id'] === $form['category_id'] ? 'checked' : '' ?> required><span><?= e($c['icon']) ?> <?= e($c['name']) ?><?php if ($c['account_no']): ?><small class="sub" style="display:block;direction:ltr"><?= e($c['account_no']) ?></small><?php endif; ?></span></label>
+              <?php endforeach; ?>
+            </div>
+          </div>
         <?php endforeach; ?>
       </div>
     </div>
@@ -118,13 +147,50 @@ require __DIR__ . '/includes/header.php';
     </div>
 
     <div class="form-row">
-      <label>البيان / ملاحظة</label>
-      <textarea name="note" maxlength="500" placeholder="مثال: بنزين سيارة التوزيع — طرطوس"><?= e($form['note']) ?></textarea>
+      <label>البيان</label>
+      <input type="text" name="note" id="note" maxlength="500" list="noteHints" autocomplete="off" value="<?= e($form['note']) ?>" placeholder="مثال: شانا / خبز / غيار زيت">
+      <datalist id="noteHints"></datalist>
+      <div id="hintChips" class="actions" style="margin-top:6px"></div>
     </div>
 
     <button class="btn btn-block">حفظ المصروف</button>
   </form>
 </div>
+<script>
+(function () {
+  var HINTS = <?= json_encode($hints, JSON_UNESCAPED_UNICODE) ?>;
+  var search = document.getElementById('catSearch'), groups = document.querySelectorAll('.cat-group');
+  var note = document.getElementById('note'), dl = document.getElementById('noteHints'), chips = document.getElementById('hintChips');
+  var picked = document.getElementById('catPicked');
+  search.addEventListener('input', function () {
+    var q = search.value.trim().toLowerCase();
+    groups.forEach(function (g) {
+      var any = false;
+      g.querySelectorAll('label[data-q]').forEach(function (l) {
+        var hit = !q || l.getAttribute('data-q').indexOf(q) !== -1;
+        l.style.display = hit ? '' : 'none';
+        if (hit) any = true;
+      });
+      g.style.display = any ? '' : 'none';
+    });
+  });
+  function onPick() {
+    var r = document.querySelector('input[name=category_id]:checked');
+    dl.innerHTML = ''; chips.innerHTML = '';
+    if (!r) { picked.style.display = 'none'; return; }
+    picked.style.display = '';
+    picked.textContent = '✔ ' + r.parentNode.getAttribute('data-label');
+    (HINTS[r.value] || []).forEach(function (h) {
+      var o = document.createElement('option'); o.value = h; dl.appendChild(o);
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-gray btn-sm'; b.textContent = h;
+      b.addEventListener('click', function () { note.value = h; note.focus(); });
+      chips.appendChild(b);
+    });
+  }
+  document.querySelectorAll('input[name=category_id]').forEach(function (r) { r.addEventListener('change', onPick); });
+  onPick();
+})();
+</script>
 <?php if ($admin): ?>
 <script>
 (function () {

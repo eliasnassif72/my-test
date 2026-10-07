@@ -25,10 +25,11 @@ if (!$rows): ?>
       <td class="keep">
         <span class="pill p-<?= e($r['type']) ?>"><?= e(txnTypeLabel($r['type'])) ?></span>
         <?php if ($v): ?><br><span class="pill p-void" title="<?= e($r['void_reason']) ?>">ملغاة</span><?php endif; ?>
+        <?php if (!empty($r['exported_at']) && !$v): ?><br><span class="pill p-opening" title="صُدِّر في سند <?= e($r['exported_at']) ?>">📤 مُصدَّر</span><?php endif; ?>
       </td>
       <td class="t-details">
         <?php if ($r['type'] === 'expense'): ?>
-          <b><?= e($r['cat_icon'] . ' ' . $r['cat_name']) ?></b>
+          <b><?= e($r['cat_icon'] . ' ' . $r['cat_name']) ?></b><?php if (!empty($r['cat_acc'])): ?> <small class="sub" dir="ltr"><?= e($r['cat_acc']) ?></small><?php endif; ?>
         <?php elseif ($r['counter_name']): ?>
           <?= $r['type'] === 'transfer_in' ? 'من: ' : 'إلى: ' ?><b><?= e($r['counter_name']) ?></b>
           <?php if ($r['fx_rate'] && $r['counter_currency'] && $r['counter_currency'] !== $r['currency']): ?>

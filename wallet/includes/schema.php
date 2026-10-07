@@ -22,6 +22,8 @@ function wlSchemaInstall(PDO $pdo)
         user_id    INT NULL,
         name       VARCHAR(120) NOT NULL,
         currency   VARCHAR(8) NOT NULL DEFAULT 'SYP',
+        account_no   VARCHAR(20)  NULL,
+        account_name VARCHAR(120) NULL,
         is_main    TINYINT(1) NOT NULL DEFAULT 0,
         balance    DECIMAL(15,2) NOT NULL DEFAULT 0,
         active     TINYINT(1) NOT NULL DEFAULT 1,
@@ -35,6 +37,9 @@ function wlSchemaInstall(PDO $pdo)
         id         INT AUTO_INCREMENT PRIMARY KEY,
         name       VARCHAR(100) NOT NULL,
         icon       VARCHAR(16)  NOT NULL DEFAULT '',
+        account_no VARCHAR(20)  NULL,
+        group_name VARCHAR(100) NULL,
+        hints      TEXT NULL,
         sort_order INT NOT NULL DEFAULT 0,
         active     TINYINT(1) NOT NULL DEFAULT 1
     $tail");
@@ -56,6 +61,7 @@ function wlSchemaInstall(PDO $pdo)
         receipt           VARCHAR(255) NULL,
         created_by        INT NOT NULL,
         created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        exported_at       DATETIME NULL,
         voided            TINYINT(1) NOT NULL DEFAULT 0,
         voided_by         INT NULL,
         voided_at         DATETIME NULL,
@@ -86,26 +92,10 @@ function wlSchemaInstall(PDO $pdo)
         $pdo->exec("INSERT INTO wl_wallets (user_id, name, is_main, balance) VALUES (NULL, 'المحفظة الرئيسية', 1, 0)");
     }
 
-    // تصنيفات المصاريف الافتراضية
+    // تصنيفات المصاريف = حسابات المصاريف في برنامج المحاسبة (رقم + اسم + الحساب الأب)
     $hasCats = (int)$pdo->query("SELECT COUNT(*) FROM wl_categories")->fetchColumn();
     if ($hasCats === 0) {
-        $defaults = [
-            ['وقود ومواصلات', '⛽'],
-            ['طعام وضيافة', '🍽️'],
-            ['قرطاسية ومستلزمات مكتب', '📎'],
-            ['اتصالات وإنترنت', '📱'],
-            ['صيانة وإصلاحات', '🔧'],
-            ['شحن وتوصيل', '🚚'],
-            ['إيجارات', '🏢'],
-            ['فواتير كهرباء وماء', '💡'],
-            ['رواتب وأجور', '👷'],
-            ['تسويق وإعلان', '📣'],
-            ['متفرقات', '🧾'],
-        ];
-        $st = $pdo->prepare("INSERT INTO wl_categories (name, icon, sort_order) VALUES (?, ?, ?)");
-        foreach ($defaults as $i => $c) {
-            $st->execute([$c[0], $c[1], ($i + 1) * 10]);
-        }
+        wlSeedAccountCategories($pdo, false);
     }
 
     $st = $pdo->prepare("INSERT IGNORE INTO wl_settings (k, v) VALUES (?, ?)");
@@ -116,7 +106,7 @@ function wlSchemaInstall(PDO $pdo)
     $st->execute(['schema_version', (string)WL_SCHEMA_VERSION]);
 }
 
-define('WL_SCHEMA_VERSION', 3);
+define('WL_SCHEMA_VERSION', 4);
 define('WL_BASE_CURRENCY', 'SYP');
 
 // جدول العملات — rate = قيمة وحدة واحدة بالعملة الأساسية (الليرة السورية = 1)
@@ -136,6 +126,29 @@ function wlSchemaCurrencies(PDO $pdo, $baseSymbol)
     $st = $pdo->prepare("INSERT IGNORE INTO wl_currencies (code, name, symbol, rate, is_base, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
     $st->execute([WL_BASE_CURRENCY, 'ليرة سورية', $baseSymbol ?: 'ل.س', 1, 1, 10]);
     $st->execute(['USD', 'دولار أمريكي', '$', 0, 0, 20]);
+}
+
+// استيراد حسابات المصاريف من برنامج المحاسبة كتصنيفات (لا يكرر حساباً موجوداً).
+// $hideOthers: إخفاء التصنيفات القديمة التي ليس لها رقم حساب (تبقى في السجل).
+function wlSeedAccountCategories(PDO $pdo, $hideOthers)
+{
+    $rows = include __DIR__ . '/accounts_seed.php';
+    usort($rows, function ($a, $b) { return $b[3] - $a[3]; });
+    $exists = $pdo->prepare("SELECT COUNT(*) FROM wl_categories WHERE account_no = ?");
+    $ins = $pdo->prepare("INSERT INTO wl_categories (name, icon, account_no, group_name, hints, sort_order) VALUES (?, '', ?, ?, ?, ?)");
+    $n = 0;
+    foreach ($rows as $i => $r) {
+        $exists->execute([$r[0]]);
+        if ((int)$exists->fetchColumn() > 0) {
+            continue;
+        }
+        $ins->execute([$r[1], $r[0], $r[2] !== '' ? $r[2] : null, implode("\n", $r[4]), ($i + 1) * 10]);
+        $n++;
+    }
+    if ($hideOthers) {
+        $pdo->exec("UPDATE wl_categories SET active = 0 WHERE account_no IS NULL OR account_no = ''");
+    }
+    return $n;
 }
 
 // ترقية قاعدة بيانات قائمة إلى آخر هيكل — آمنة للتكرار، وتعمل تلقائياً من bootstrap
@@ -180,6 +193,28 @@ function wlSchemaMigrate(PDO $pdo)
             $pdo->exec("ALTER TABLE wl_transactions ADD COLUMN base_amount DECIMAL(18,2) NULL AFTER fx_rate");
         }
         $pdo->exec("UPDATE wl_transactions SET base_amount = amount WHERE base_amount IS NULL");
+    }
+    if ($ver < 4) {
+        // v4: أرقام حسابات المحاسبة للتصنيفات والمحافظ + تصدير السندات
+        if (!$col('wl_categories', 'account_no')) {
+            $pdo->exec("ALTER TABLE wl_categories ADD COLUMN account_no VARCHAR(20) NULL AFTER icon");
+        }
+        if (!$col('wl_categories', 'group_name')) {
+            $pdo->exec("ALTER TABLE wl_categories ADD COLUMN group_name VARCHAR(100) NULL AFTER account_no");
+        }
+        if (!$col('wl_categories', 'hints')) {
+            $pdo->exec("ALTER TABLE wl_categories ADD COLUMN hints TEXT NULL AFTER group_name");
+        }
+        if (!$col('wl_wallets', 'account_no')) {
+            $pdo->exec("ALTER TABLE wl_wallets ADD COLUMN account_no VARCHAR(20) NULL AFTER currency");
+        }
+        if (!$col('wl_wallets', 'account_name')) {
+            $pdo->exec("ALTER TABLE wl_wallets ADD COLUMN account_name VARCHAR(120) NULL AFTER account_no");
+        }
+        if (!$col('wl_transactions', 'exported_at')) {
+            $pdo->exec("ALTER TABLE wl_transactions ADD COLUMN exported_at DATETIME NULL AFTER created_at");
+        }
+        wlSeedAccountCategories($pdo, true);
     }
     setSetting($pdo, 'schema_version', (string)WL_SCHEMA_VERSION);
 }
