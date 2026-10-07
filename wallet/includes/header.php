@@ -7,7 +7,8 @@ if ($__u) {
     $__nav[] = ['dashboard.php', '🏠', 'الرئيسية', 'dashboard'];
     $__nav[] = ['expense.php', '➖', 'مصروف جديد', 'expense'];
     if ($__u['role'] === 'admin') {
-        $__nav[] = ['fund.php', '💸', 'تغذية / إيداع', 'fund'];
+        $__nav[] = ['fund.php', '💸', 'حركة الأموال', 'fund'];
+        $__nav[] = ['treasuries.php', '🏦', 'المحافظ الرئيسية', 'treasuries'];
     } elseif ($__u['wallet_id']) {
         $__nav[] = ['wallet.php?id=' . (int)$__u['wallet_id'], '👛', 'محفظتي', 'wallet'];
     }

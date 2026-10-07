@@ -4,7 +4,7 @@ $me = requireLogin();
 $admin = $me['role'] === 'admin';
 
 if ($admin) {
-    $walletList = $pdo->query("SELECT id, name, balance, is_main FROM wl_wallets WHERE active = 1 ORDER BY is_main DESC, name")->fetchAll();
+    $walletList = $pdo->query("SELECT id, name, balance, currency, is_main FROM wl_wallets WHERE active = 1 AND archived = 0 ORDER BY is_main DESC, name")->fetchAll();
 } else {
     if (!$me['wallet_id']) {
         flash('error', 'لا توجد محفظة مرتبطة بحسابك');
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw $ex;
             }
             $w = wlGetWallet($pdo, $form['wallet_id']);
-            flash('success', '✅ تم تسجيل مصروف ' . money($amount) . ' — الرصيد الحالي لـ«' . $w['name'] . '»: ' . money($w['balance']));
+            flash('success', '✅ تم تسجيل مصروف ' . money($amount, true, $w['currency']) . ' — الرصيد الحالي لـ«' . $w['name'] . '»: ' . money($w['balance'], true, $w['currency']));
             redirect('expense.php' . ($admin ? '?wallet=' . (int)$form['wallet_id'] : ''));
         } catch (WalletError $ex) {
             $err = $ex->getMessage();
@@ -81,18 +81,18 @@ require __DIR__ . '/includes/header.php';
         <select name="wallet_id" required>
           <option value="">— اختر —</option>
           <?php foreach ($walletList as $w): ?>
-            <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $form['wallet_id'] ? 'selected' : '' ?>>
-              <?= $w['is_main'] ? '🏦 ' : '👤 ' ?><?= e($w['name']) ?> — <?= e(money($w['balance'])) ?>
+            <option value="<?= (int)$w['id'] ?>" data-sym="<?= e(currencySymbol($w['currency'])) ?>" <?= (int)$w['id'] === $form['wallet_id'] ? 'selected' : '' ?>>
+              <?= $w['is_main'] ? '🏦 ' : '👤 ' ?><?= e($w['name']) ?> — <?= e(money($w['balance'], true, $w['currency'])) ?>
             </option>
           <?php endforeach; ?>
         </select>
       </div>
     <?php else: $w = $walletList[0]; ?>
-      <div class="alert alert-info">رصيدك المتاح: <b class="num"><?= e(money($w['balance'])) ?></b></div>
+      <div class="alert alert-info">رصيدك المتاح: <b class="num"><?= e(money($w['balance'], true, $w['currency'])) ?></b></div>
     <?php endif; ?>
 
     <div class="form-row">
-      <label>المبلغ (<?= e(setting($pdo, 'currency', 'ل.س')) ?>)</label>
+      <label>المبلغ (<span id="expSym"><?= e(currencySymbol($admin ? null : $walletList[0]['currency'])) ?></span>)</label>
       <input class="big" type="text" name="amount" inputmode="decimal" data-money value="<?= e($form['amount']) ?>" placeholder="0" required autocomplete="off">
     </div>
 
@@ -125,4 +125,13 @@ require __DIR__ . '/includes/header.php';
     <button class="btn btn-block">حفظ المصروف</button>
   </form>
 </div>
+<?php if ($admin): ?>
+<script>
+(function () {
+  var sel = document.querySelector('select[name=wallet_id]'), lbl = document.getElementById('expSym');
+  function sync() { var o = sel.options[sel.selectedIndex]; if (o && o.getAttribute('data-sym')) lbl.textContent = o.getAttribute('data-sym'); }
+  sel.addEventListener('change', sync); sync();
+})();
+</script>
+<?php endif; ?>
 <?php require __DIR__ . '/includes/footer.php';

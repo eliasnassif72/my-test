@@ -14,10 +14,10 @@ header('Cache-Control: no-store');
 $from = date('Y-m-01');
 $to   = date('Y-m-t');
 $rows = wlWalletSummaries($pdo, $from, $to);
-$main = null; $list = []; $sumW = 0; $sumSpent = 0;
+$treas = []; $list = []; $sumW = 0; $sumSpent = 0;
 foreach ($rows as $r) {
-    $sumSpent += $r['month_spent'];
-    if ((int)$r['is_main'] === 1) { $main = $r; } else { $list[] = $r; $sumW += $r['balance']; }
+    $sumSpent += $r['month_spent_base'];
+    if ((int)$r['is_main'] === 1) { $treas[] = $r; } else { $list[] = $r; $sumW += $r['balance'] * currencyRate($r['currency']); }
 }
 ?><!doctype html>
 <html lang="ar" dir="rtl">
@@ -32,16 +32,20 @@ foreach ($rows as $r) {
 </head>
 <body>
 <div class="wrap">
-  <div class="grid g3" style="margin-bottom:12px">
-    <div class="stat hero"><div class="lbl">🏦 المحفظة الرئيسية</div><div class="val num"><?= e(money($main ? $main['balance'] : 0)) ?></div></div>
-    <div class="stat blue"><div class="lbl">👛 مجموع المحافظ (<?= count($list) ?>)</div><div class="val num"><?= e(money($sumW)) ?></div></div>
+  <div class="grid wallets" style="margin-bottom:12px">
+    <?php foreach ($treas as $t): ?>
+      <div class="stat hero"><div class="lbl">🏦 <?= e($t['name']) ?></div><div class="val num" style="font-size:1.5rem"><?= e(money($t['balance'], true, $t['currency'])) ?></div></div>
+    <?php endforeach; ?>
+  </div>
+  <div class="grid g2" style="margin-bottom:12px">
+    <div class="stat blue"><div class="lbl">👛 أرصدة الموظفين (<?= count($list) ?>) — بما يعادل</div><div class="val num"><?= e(money($sumW)) ?></div></div>
     <div class="stat"><div class="lbl">➖ مصاريف <?= e(arMonthName(date('Y-m'))) ?></div><div class="val num neg"><?= e(money($sumSpent)) ?></div></div>
   </div>
   <div class="grid wallets">
     <?php foreach ($list as $w): ?>
       <div class="wcard <?= (int)$w['active'] !== 1 ? 'off' : '' ?> <?= $w['balance'] <= 0 ? 'low' : '' ?>">
         <div class="wname">👤 <?= e($w['name']) ?></div>
-        <div class="wbal num <?= $w['balance'] < 0 ? 'neg' : '' ?>"><?= e(money($w['balance'])) ?></div>
+        <div class="wbal num <?= $w['balance'] < 0 ? 'neg' : '' ?>"><?= e(money($w['balance'], true, $w['currency'])) ?></div>
         <div class="wmeta">مصروف الشهر: <b class="num"><?= e(money($w['month_spent'], false)) ?></b></div>
       </div>
     <?php endforeach; ?>

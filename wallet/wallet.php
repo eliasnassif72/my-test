@@ -36,6 +36,7 @@ $p = $st->fetch();
 $closing = $opening + $p['inflow'] - $p['spent'] - $p['outflow'];
 
 $catTotals = wlCategoryTotals($pdo, $from, $to, $wallet['id']);
+$catCur    = $wallet['currency'];
 $rows = wlTxnQuery($pdo, ['wallet_id' => $wallet['id'], 'from' => $from, 'to' => $to], 0);
 
 $pageTitle = $wallet['name'];
@@ -43,7 +44,7 @@ $active = $admin ? '' : 'wallet';
 require __DIR__ . '/includes/header.php';
 ?>
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
-  <h1 style="margin:0"><?= $wallet['is_main'] ? '🏦' : '👛' ?> <?= e($wallet['name']) ?>
+  <h1 style="margin:0"><?= $wallet['is_main'] ? '🏦' : '👛' ?> <?= e($wallet['name']) ?> <span class="pill p-opening"><?= e($wallet['currency']) ?></span>
     <?php if ((int)$wallet['active'] !== 1): ?><span class="pill p-void">موقوفة</span><?php endif; ?>
   </h1>
   <div class="actions">
@@ -57,10 +58,10 @@ require __DIR__ . '/includes/header.php';
 </div>
 
 <div class="grid g4" style="margin-bottom:16px">
-  <div class="stat hero"><div class="lbl">الرصيد الحالي</div><div class="val num"><?= e(money($wallet['balance'])) ?></div></div>
-  <div class="stat"><div class="lbl">💸 وارد <?= e(arMonthName($ym)) ?></div><div class="val num pos"><?= e(money($p['inflow'])) ?></div></div>
-  <div class="stat"><div class="lbl">➖ مصاريف (<?= (int)$p['exp_count'] ?>)</div><div class="val num neg"><?= e(money($p['spent'])) ?></div></div>
-  <div class="stat"><div class="lbl">↩️ تحويلات صادرة / سحب</div><div class="val num"><?= e(money($p['outflow'])) ?></div></div>
+  <div class="stat hero"><div class="lbl">الرصيد الحالي</div><div class="val num"><?= e(money($wallet['balance'], true, $wallet['currency'])) ?></div></div>
+  <div class="stat"><div class="lbl">💸 وارد <?= e(arMonthName($ym)) ?></div><div class="val num pos"><?= e(money($p['inflow'], true, $wallet['currency'])) ?></div></div>
+  <div class="stat"><div class="lbl">➖ مصاريف (<?= (int)$p['exp_count'] ?>)</div><div class="val num neg"><?= e(money($p['spent'], true, $wallet['currency'])) ?></div></div>
+  <div class="stat"><div class="lbl">↩️ تحويلات صادرة / سحب</div><div class="val num"><?= e(money($p['outflow'], true, $wallet['currency'])) ?></div></div>
 </div>
 
 <?php if (!empty($wallet['archived'])): ?>
@@ -72,8 +73,9 @@ require __DIR__ . '/includes/header.php';
     <a class="btn" href="fund.php?op=topup&wallet=<?= (int)$wallet['id'] ?>">💸 تغذية هذه المحفظة</a>
     <a class="btn btn-light" href="fund.php?op=return&wallet=<?= (int)$wallet['id'] ?>">↩️ إرجاع للرئيسية</a>
   <?php elseif ($admin && $wallet['is_main']): ?>
-    <a class="btn" href="fund.php?op=deposit">🏦 إيداع</a>
-    <a class="btn btn-light" href="fund.php?op=topup">💸 تغذية محفظة</a>
+    <a class="btn" href="fund.php?op=deposit&wallet=<?= (int)$wallet['id'] ?>">🏦 إيداع</a>
+    <a class="btn btn-light" href="fund.php?op=withdraw&wallet=<?= (int)$wallet['id'] ?>">🏧 سحب</a>
+    <a class="btn btn-light" href="fund.php?op=return&wallet=<?= (int)$wallet['id'] ?>">💸 تحويل منها</a>
   <?php endif; ?>
   <a class="btn btn-light" href="expense.php<?= $admin ? '?wallet=' . (int)$wallet['id'] : '' ?>">➖ تسجيل مصروف</a>
   <?php if ($admin): ?>
@@ -88,11 +90,11 @@ require __DIR__ . '/includes/header.php';
   <div class="card">
     <h2>🧾 كشف حساب <?= e(arMonthName($ym)) ?></h2>
     <table>
-      <tr><td>رصيد أول المدة</td><td class="num" style="text-align:left"><b><?= e(money($opening)) ?></b></td></tr>
-      <tr><td>+ وارد (تغذية / إيداع)</td><td class="num pos" style="text-align:left"><?= e(money($p['inflow'])) ?></td></tr>
-      <tr><td>− مصاريف</td><td class="num neg" style="text-align:left"><?= e(money($p['spent'])) ?></td></tr>
-      <tr><td>− تحويلات صادرة / سحب</td><td class="num" style="text-align:left"><?= e(money($p['outflow'])) ?></td></tr>
-      <tr style="background:var(--primary-bg)"><td><b>رصيد آخر المدة</b></td><td class="num" style="text-align:left"><b><?= e(money($closing)) ?></b></td></tr>
+      <tr><td>رصيد أول المدة</td><td class="num" style="text-align:left"><b><?= e(money($opening, true, $wallet['currency'])) ?></b></td></tr>
+      <tr><td>+ وارد (تغذية / إيداع)</td><td class="num pos" style="text-align:left"><?= e(money($p['inflow'], true, $wallet['currency'])) ?></td></tr>
+      <tr><td>− مصاريف</td><td class="num neg" style="text-align:left"><?= e(money($p['spent'], true, $wallet['currency'])) ?></td></tr>
+      <tr><td>− تحويلات صادرة / سحب</td><td class="num" style="text-align:left"><?= e(money($p['outflow'], true, $wallet['currency'])) ?></td></tr>
+      <tr style="background:var(--primary-bg)"><td><b>رصيد آخر المدة</b></td><td class="num" style="text-align:left"><b><?= e(money($closing, true, $wallet['currency'])) ?></b></td></tr>
     </table>
   </div>
   <div class="card">

@@ -7,7 +7,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = post('action');
     if ($action === 'general') {
         setSetting($pdo, 'app_name', mb_substr(post('app_name'), 0, 80) ?: 'Elias Control');
-        setSetting($pdo, 'currency', mb_substr(post('currency'), 0, 12) ?: 'ل.س');
         setSetting($pdo, 'allow_negative', post('allow_negative') === '1' ? '1' : '0');
         flash('success', 'تم حفظ الإعدادات');
     } elseif ($action === 'regen_key') {
@@ -38,7 +37,7 @@ require __DIR__ . '/includes/header.php';
     <form method="post">
       <?= csrfField() ?><input type="hidden" name="action" value="general">
       <div class="form-row"><label>اسم النظام</label><input type="text" name="app_name" value="<?= e(setting($pdo, 'app_name')) ?>"></div>
-      <div class="form-row"><label>رمز العملة</label><input type="text" name="currency" value="<?= e(setting($pdo, 'currency')) ?>"></div>
+      <div class="form-row"><label>العملات وأسعار الصرف</label><a class="btn btn-light btn-sm" href="treasuries.php#currencies">💱 إدارة العملات</a></div>
       <div class="form-row"><label class="inline-check"><input type="checkbox" name="allow_negative" value="1" <?= setting($pdo, 'allow_negative') === '1' ? 'checked' : '' ?>> السماح بالرصيد السالب (صرف أكثر من الرصيد)</label>
         <div class="hint">افتراضياً: لا يمكن تسجيل مصروف أو تحويل أكبر من رصيد المحفظة.</div></div>
       <button class="btn">حفظ</button>
@@ -52,7 +51,7 @@ require __DIR__ . '/includes/header.php';
     <?php else: ?>
       <div class="alert alert-error">عدم تطابق في <?= count($issues) ?> محفظة:</div>
       <table><tr><th>المحفظة</th><th>الرصيد المخزّن</th><th>حسب الحركات</th></tr>
-        <?php foreach ($issues as $i): ?><tr><td><?= e($i['name']) ?></td><td class="num"><?= e(money($i['balance'])) ?></td><td class="num"><?= e(money($i['ledger'])) ?></td></tr><?php endforeach; ?>
+        <?php foreach ($issues as $i): ?><tr><td><?= e($i['name']) ?></td><td class="num"><?= e(money($i['balance'], false)) ?></td><td class="num"><?= e(money($i['ledger'], false)) ?></td></tr><?php endforeach; ?>
       </table>
       <form method="post" data-confirm="إعادة احتساب كل الأرصدة من سجل الحركات؟" style="margin-top:10px">
         <?= csrfField() ?><input type="hidden" name="action" value="fix_balances"><button class="btn btn-red">إصلاح الأرصدة</button>

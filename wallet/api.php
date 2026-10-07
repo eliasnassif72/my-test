@@ -28,29 +28,40 @@ $to   = date('Y-m-t', strtotime($from));
 
 $rows = wlWalletSummaries($pdo, $from, $to, false, get('wallet') !== '' ? (int)get('wallet') : null);
 
-$main = null;
+$treasuries = [];
 $wallets = [];
-$totalUsers = 0;
-$totalExp = 0;
+$byCur = [];
+$totalTreasBase = 0;
+$totalUsersBase = 0;
+$totalExpBase = 0;
 foreach ($rows as $r) {
+    $rate = currencyRate($r['currency']);
     $item = [
         'id'             => (int)$r['id'],
         'name'           => $r['name'],
+        'currency'       => $r['currency'],
         'owner'          => $r['owner'],
         'username'       => $r['username'],
         'balance'        => (float)$r['balance'],
+        'balance_base'   => round((float)$r['balance'] * $rate, 2),
         'month_expenses' => (float)$r['month_spent'],
         'month_in'       => (float)$r['month_in'],
         'active'         => (int)$r['active'] === 1,
         'last_activity'  => $r['last_activity'],
     ];
-    $totalExp += $item['month_expenses'];
+    $totalExpBase += (float)$r['month_spent_base'];
     if ((int)$r['is_main'] === 1) {
-        $main = $item;
+        $treasuries[] = $item;
+        $totalTreasBase += $item['balance_base'];
     } else {
-        $totalUsers += $item['balance'];
         $wallets[] = $item;
+        $totalUsersBase += $item['balance_base'];
+        $byCur[$r['currency']] = (isset($byCur[$r['currency']]) ? $byCur[$r['currency']] : 0) + $item['balance'];
     }
+}
+$currencies = [];
+foreach (wlCurrencies() as $c) {
+    $currencies[$c['code']] = ['name' => $c['name'], 'symbol' => $c['symbol'], 'rate' => (float)$c['rate']];
 }
 
 $cats = [];
@@ -59,17 +70,25 @@ foreach (wlCategoryTotals($pdo, $from, $to, get('wallet') !== '' ? (int)get('wal
 }
 
 echo json_encode([
-    'ok'           => true,
-    'app'          => setting($pdo, 'app_name'),
-    'currency'     => setting($pdo, 'currency'),
-    'month'        => $ym,
-    'generated_at' => date('c'),
-    'main_wallet'  => $main,
-    'wallets'      => $wallets,
-    'totals'       => [
-        'main_balance'    => $main ? $main['balance'] : null,
-        'wallets_balance' => $totalUsers,
-        'month_expenses'  => $totalExp,
+    'ok'            => true,
+    'app'           => setting($pdo, 'app_name'),
+    'base_currency' => baseCurrency(),
+    'currency'      => currencySymbol(),
+    'currencies'    => $currencies,
+    'month'         => $ym,
+    'generated_at'  => date('c'),
+    'treasuries'    => $treasuries,
+    'main_wallet'   => $treasuries ? $treasuries[0] : null,
+    'wallets'       => $wallets,
+    'totals'        => [
+        'treasuries_balance_base'     => $totalTreasBase,
+        'wallets_balance_base'        => $totalUsersBase,
+        'wallets_balance_by_currency' => $byCur,
+        'month_expenses_base'         => $totalExpBase,
+        // حقول قديمة للتوافق (بالعملة الأساسية)
+        'main_balance'    => $totalTreasBase,
+        'wallets_balance' => $totalUsersBase,
+        'month_expenses'  => $totalExpBase,
     ],
     'expenses_by_category' => $cats,
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

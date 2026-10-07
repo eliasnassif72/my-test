@@ -32,14 +32,63 @@ function setSetting(PDO $pdo, $key, $value)
     setting($pdo, null);
 }
 
-function money($n, $withCurrency = true)
+// العملات المعرّفة (مخزّنة مؤقتاً لكل طلب) — code => row
+function wlCurrencies($refresh = false)
 {
     global $pdo;
+    static $cache = null;
+    if ($cache === null || $refresh) {
+        $cache = [];
+        try {
+            foreach ($pdo->query("SELECT * FROM wl_currencies ORDER BY sort_order, code") as $r) {
+                $cache[$r['code']] = $r;
+            }
+        } catch (Exception $ex) {
+        }
+    }
+    return $cache;
+}
+
+function baseCurrency()
+{
+    return defined('WL_BASE_CURRENCY') ? WL_BASE_CURRENCY : 'SYP';
+}
+
+function currencySymbol($code = null)
+{
+    global $pdo;
+    $code = $code ?: baseCurrency();
+    $c = wlCurrencies();
+    if (isset($c[$code])) {
+        return $c[$code]['symbol'];
+    }
+    return $code === baseCurrency() ? setting($pdo, 'currency', 'ل.س') : $code;
+}
+
+// قيمة وحدة من العملة بالعملة الأساسية (0 = غير محدد)
+function currencyRate($code)
+{
+    if ($code === baseCurrency()) {
+        return 1.0;
+    }
+    $c = wlCurrencies();
+    return isset($c[$code]) ? (float)$c[$code]['rate'] : 0.0;
+}
+
+// تنسيق مبلغ؛ $cur = رمز العملة (افتراضياً الأساسية)
+function money($n, $withCurrency = true, $cur = null)
+{
     $n = (float)$n;
     $dec = (abs($n - round($n)) > 0.001) ? 2 : 0;
     // عزل الرقم باتجاه LTR (LRI…PDI) حتى تبقى إشارة السالب بمكانها داخل النص العربي
     $s = "\u{2066}" . number_format($n, $dec, '.', ',') . "\u{2069}";
-    return $withCurrency ? $s . ' ' . setting($pdo, 'currency', 'ل.س') : $s;
+    return $withCurrency ? $s . ' ' . currencySymbol($cur) : $s;
+}
+
+// رقم عادي لحقول الإدخال (بدون رموز اتجاه)
+function plainNumber($n)
+{
+    return rtrim(rtrim(number_format((float)$n, 6, '.', ''), '0'), '.');
 }
 
 // يقبل "1,500" أو "1500.50" أو أرقام عربية-هندية
@@ -59,6 +108,21 @@ function parseAmount($raw)
         return null;
     }
     return $v;
+}
+
+// سعر صرف: رقم موجب حتى 6 منازل عشرية (يقبل الفواصل والأرقام العربية)
+function parseRate($raw)
+{
+    $raw = strtr(trim((string)$raw), [
+        '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
+        '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+        '٫' => '.', '٬' => '', ',' => '', ' ' => '',
+    ]);
+    if ($raw === '' || !preg_match('/^\d+(\.\d{1,6})?$/', $raw)) {
+        return null;
+    }
+    $v = (float)$raw;
+    return ($v > 0 && $v < 1e12) ? $v : null;
 }
 
 function validDate($d)

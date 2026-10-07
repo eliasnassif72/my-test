@@ -25,12 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st->execute([$username]);
             if ($st->fetchColumn()) throw new WalletError('اسم المستخدم مستخدم مسبقاً');
 
+            $cur  = post('currency') ?: baseCurrency();
+            $curs = wlCurrencies();
+            if ($withWallet && (!isset($curs[$cur]) || ($cur !== baseCurrency() && (float)$curs[$cur]['rate'] <= 0))) {
+                throw new WalletError('عملة المحفظة غير صالحة أو سعرها غير محدد');
+            }
             $pdo->beginTransaction();
             $pdo->prepare("INSERT INTO wl_users (username, password_hash, full_name, phone, role) VALUES (?, ?, ?, ?, ?)")
                 ->execute([$username, password_hash($pass, PASSWORD_DEFAULT), $name, post('phone') ?: null, $role]);
             $uid = (int)$pdo->lastInsertId();
             if ($withWallet) {
-                $pdo->prepare("INSERT INTO wl_wallets (user_id, name) VALUES (?, ?)")->execute([$uid, $name]);
+                $pdo->prepare("INSERT INTO wl_wallets (user_id, name, currency) VALUES (?, ?, ?)")->execute([$uid, $name, $cur]);
             }
             $pdo->commit();
             flash('success', 'تم إنشاء المستخدم «' . $name . '»' . ($withWallet ? ' ومحفظته' : ''));
@@ -87,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('users.php');
 }
 
-$all = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance,
+$all = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance, w.currency,
                            COALESCE(w.archived, 0) AS archived, w.archived_at,
                            (SELECT COUNT(*) FROM wl_transactions t
                              WHERE t.created_by = u.id OR t.wallet_id = w.id OR t.counter_wallet_id = w.id) AS txn_count
@@ -152,7 +157,15 @@ require __DIR__ . '/includes/header.php';
           <div class="form-row"><label>الصلاحية</label>
             <select name="role"><option value="user">مستخدم (محفظته فقط)</option><option value="admin">مدير النظام</option></select></div>
         </div>
-        <div class="form-row"><label class="inline-check"><input type="checkbox" name="with_wallet" value="1" checked> إنشاء محفظة له (إلزامي للمستخدم العادي)</label></div>
+        <div class="grid g2">
+          <div class="form-row"><label class="inline-check" style="margin-top:28px"><input type="checkbox" name="with_wallet" value="1" checked> إنشاء محفظة له</label></div>
+          <div class="form-row"><label>عملة المحفظة</label>
+            <select name="currency">
+              <?php foreach (wlCurrencies() as $c): if (!(int)$c['active'] || ($c['code'] !== baseCurrency() && (float)$c['rate'] <= 0)) continue; ?>
+                <option value="<?= e($c['code']) ?>" <?= $c['code'] === baseCurrency() ? 'selected' : '' ?>><?= e($c['name'] . ' (' . $c['symbol'] . ')') ?></option>
+              <?php endforeach; ?>
+            </select></div>
+        </div>
         <button class="btn btn-block">إنشاء المستخدم ومحفظته</button>
       </form>
     <?php endif; ?>
@@ -169,7 +182,7 @@ require __DIR__ . '/includes/header.php';
           <td><b><?= e($u['full_name']) ?></b><div class="sub" dir="ltr" style="text-align:right"><?= e($u['username']) ?></div></td>
           <td><?= $u['role'] === 'admin' ? '<span class="pill p-transfer_out">مدير</span>' : '<span class="pill p-deposit">مستخدم</span>' ?>
               <?= (int)$u['active'] !== 1 ? '<br><span class="pill p-void">موقوف</span>' : '' ?></td>
-          <td class="num"><?php if ($u['wallet_id']): ?><a href="wallet.php?id=<?= (int)$u['wallet_id'] ?>"><?= e(money($u['balance'])) ?></a><?php else: ?>
+          <td class="num"><?php if ($u['wallet_id']): ?><a href="wallet.php?id=<?= (int)$u['wallet_id'] ?>"><?= e(money($u['balance'], true, $u['currency'])) ?></a><?php else: ?>
             <form method="post" style="display:inline"><?= csrfField() ?><input type="hidden" name="action" value="create_wallet"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>"><button class="btn btn-light btn-sm">+ محفظة</button></form>
           <?php endif; ?></td>
           <td class="sub num"><?= e($u['last_login'] ? substr($u['last_login'], 0, 16) : '—') ?></td>
@@ -212,7 +225,7 @@ require __DIR__ . '/includes/header.php';
       <tr>
         <td><b><?= e($u['full_name']) ?></b><div class="sub" dir="ltr" style="text-align:right"><?= e($u['username']) ?></div></td>
         <td class="sub num"><?= e(substr((string)$u['archived_at'], 0, 10)) ?></td>
-        <td class="num"><?= e(money($u['balance'])) ?></td>
+        <td class="num"><?= e(money($u['balance'], true, $u['currency'])) ?></td>
         <td class="actions">
           <a class="btn btn-gray btn-sm" href="wallet.php?id=<?= (int)$u['wallet_id'] ?>">السجل</a>
           <form method="post" action="archive.php" data-confirm="استعادة المحفظة وتفعيل حساب «<?= e($u['full_name']) ?>»؟">

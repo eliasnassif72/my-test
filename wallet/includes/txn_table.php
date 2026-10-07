@@ -31,12 +31,15 @@ if (!$rows): ?>
           <b><?= e($r['cat_icon'] . ' ' . $r['cat_name']) ?></b>
         <?php elseif ($r['counter_name']): ?>
           <?= $r['type'] === 'transfer_in' ? 'من: ' : 'إلى: ' ?><b><?= e($r['counter_name']) ?></b>
+          <?php if ($r['fx_rate'] && $r['counter_currency'] && $r['counter_currency'] !== $r['currency']): ?>
+            <div class="sub">💱 <?= $r['type'] === 'transfer_in' ? 'خرج منها' : 'وصلها' ?> <span class="num"><?= e(money(abs($r['counter_amount']), true, $r['counter_currency'])) ?></span> · <?= e(wlFxLabel($r['currency'], $r['counter_currency'], $r['fx_rate'])) ?></div>
+          <?php endif; ?>
         <?php endif; ?>
         <?php if ($r['note']): ?><div class="sub"><?= e($r['note']) ?></div><?php endif; ?>
         <?php if ($r['receipt']): ?><div><a class="sub" href="receipt.php?id=<?= (int)$r['id'] ?>" target="_blank">📎 الإيصال</a></div><?php endif; ?>
         <?php if ($v && $r['void_reason']): ?><div class="sub keep">سبب الإلغاء: <?= e($r['void_reason']) ?></div><?php endif; ?>
       </td>
-      <td class="num t-amount <?= $r['amount'] < 0 ? 'neg' : 'pos' ?>" style="font-weight:800"><?= $r['amount'] > 0 ? '+' : '' ?><?= e(money($r['amount'], false)) ?></td>
+      <td class="num t-amount <?= $r['amount'] < 0 ? 'neg' : 'pos' ?>" style="font-weight:800"><?= $r['amount'] > 0 ? '+' : '' ?><?= e(money($r['amount'], false)) ?><?= $r['currency'] !== baseCurrency() ? ' <small>' . e(currencySymbol($r['currency'])) . '</small>' : '' ?></td>
       <td class="num hide-sm"><?= e(money($r['balance_after'], false)) ?></td>
       <td class="sub hide-sm"><?= e($r['creator_name']) ?></td>
       <?php if ($canVoid): ?>

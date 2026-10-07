@@ -6,9 +6,58 @@ class WalletError extends Exception
 {
 }
 
+// أول محفظة رئيسية (خزينة) — للتوافق؛ يمكن وجود عدة محافظ رئيسية بعملات مختلفة
 function wlMainWallet(PDO $pdo)
 {
-    return $pdo->query("SELECT * FROM wl_wallets WHERE is_main = 1 ORDER BY id LIMIT 1")->fetch();
+    return $pdo->query("SELECT * FROM wl_wallets WHERE is_main = 1 AND archived = 0 ORDER BY id LIMIT 1")->fetch();
+}
+
+function wlTreasuries(PDO $pdo, $withArchived = false)
+{
+    return $pdo->query("SELECT * FROM wl_wallets WHERE is_main = 1" . ($withArchived ? "" : " AND archived = 0") . " ORDER BY id")->fetchAll();
+}
+
+// ===== العملات وأسعار الصرف =====
+// سعر الصرف يُكتب دائماً بصيغة «1 من العملة الأقوى = X من الأضعف» (مثال: 1 USD = 13800 SYP)
+function wlFxHi($a, $b)
+{
+    $base = baseCurrency();
+    if ($a === $base && $b !== $base) {
+        return $b;
+    }
+    if ($b === $base && $a !== $base) {
+        return $a;
+    }
+    return currencyRate($a) >= currencyRate($b) ? $a : $b;
+}
+
+// السعر الافتراضي المحفوظ للزوج (0 = غير محدد)
+function wlDefaultFx($a, $b)
+{
+    $hi = wlFxHi($a, $b);
+    $lo = $hi === $a ? $b : $a;
+    $rh = currencyRate($hi);
+    $rl = currencyRate($lo);
+    return ($rh > 0 && $rl > 0) ? $rh / $rl : 0.0;
+}
+
+// تحويل مبلغ من عملة إلى أخرى بسعر «1 أقوى = X أضعف»
+function wlFxConvert($amount, $from, $to, $fx)
+{
+    if ($from === $to) {
+        return round((float)$amount, 2);
+    }
+    if ($fx <= 0) {
+        throw new WalletError('أدخل سعر الصرف');
+    }
+    return wlFxHi($from, $to) === $from ? round($amount * $fx, 2) : round($amount / $fx, 2);
+}
+
+function wlFxLabel($a, $b, $fx)
+{
+    $hi = wlFxHi($a, $b);
+    $lo = $hi === $a ? $b : $a;
+    return '1 ' . currencySymbol($hi) . ' = ' . money($fx, true, $lo);
 }
 
 function wlGetWallet(PDO $pdo, $id)
@@ -49,7 +98,7 @@ function wlApply(PDO $pdo, array &$wallet, $delta, $type, array $o)
     $delta = round((float)$delta, 2);
     $new   = round((float)$wallet['balance'] + $delta, 2);
     if ($delta < 0 && $new < 0 && empty($o['force']) && !wlAllowNegative($pdo)) {
-        throw new WalletError('الرصيد غير كافٍ في «' . $wallet['name'] . '» — المتاح: ' . money($wallet['balance']));
+        throw new WalletError('الرصيد غير كافٍ في «' . $wallet['name'] . '» — المتاح: ' . money($wallet['balance'], true, $wallet['currency']));
     }
     // المحفظة الموقوفة لا تقبل مصاريف جديدة، لكن يبقى بإمكان المدير إرجاع رصيدها للرئيسية
     if ($type === 'expense' && ((int)$wallet['active'] !== 1 || !empty($wallet['archived']))) {
@@ -58,11 +107,15 @@ function wlApply(PDO $pdo, array &$wallet, $delta, $type, array $o)
     $pdo->prepare("UPDATE wl_wallets SET balance = ? WHERE id = ?")->execute([$new, $wallet['id']]);
     $wallet['balance'] = $new;
 
+    // المعادل بالعملة الأساسية (للتقارير الشاملة) بسعر يوم الحركة
+    $base = array_key_exists('base', $o) ? $o['base'] : round($delta * currencyRate($wallet['currency']), 2);
     $pdo->prepare("INSERT INTO wl_transactions
-        (wallet_id, type, amount, balance_after, category_id, counter_wallet_id, ref, txn_date, note, receipt, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        (wallet_id, type, amount, balance_after, fx_rate, base_amount, category_id, counter_wallet_id, ref, txn_date, note, receipt, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         ->execute([
             $wallet['id'], $type, $delta, $new,
+            isset($o['fx']) ? $o['fx'] : null,
+            $base,
             isset($o['category_id']) ? $o['category_id'] : null,
             isset($o['counter_wallet_id']) ? $o['counter_wallet_id'] : null,
             isset($o['ref']) ? $o['ref'] : null,
@@ -87,48 +140,95 @@ function wlRun(PDO $pdo, $fn)
     }
 }
 
-// إيداع رأس مال في المحفظة الرئيسية
-function wlDeposit(PDO $pdo, $amount, $date, $note, $by)
+function wlLockTreasury(PDO $pdo, $walletId)
 {
-    return wlRun($pdo, function () use ($pdo, $amount, $date, $note, $by) {
-        $main = wlMainWallet($pdo);
-        $l = wlLock($pdo, [$main['id']]);
-        $w = $l[$main['id']];
+    $l = wlLock($pdo, [$walletId]);
+    $w = $l[(int)$walletId];
+    if ((int)$w['is_main'] !== 1 || !empty($w['archived'])) {
+        throw new WalletError('اختر محفظة رئيسية');
+    }
+    return $w;
+}
+
+// إيداع (إضافة رصيد من خارج النظام) في محفظة رئيسية
+function wlDeposit(PDO $pdo, $walletId, $amount, $date, $note, $by)
+{
+    return wlRun($pdo, function () use ($pdo, $walletId, $amount, $date, $note, $by) {
+        $w = wlLockTreasury($pdo, $walletId);
         return wlApply($pdo, $w, $amount, 'deposit', ['date' => $date, 'note' => $note, 'by' => $by]);
     });
 }
 
-// سحب من المحفظة الرئيسية إلى خارج النظام
-function wlWithdraw(PDO $pdo, $amount, $date, $note, $by)
+// سحب من محفظة رئيسية إلى خارج النظام
+function wlWithdraw(PDO $pdo, $walletId, $amount, $date, $note, $by)
 {
-    return wlRun($pdo, function () use ($pdo, $amount, $date, $note, $by) {
-        $main = wlMainWallet($pdo);
-        $l = wlLock($pdo, [$main['id']]);
-        $w = $l[$main['id']];
+    return wlRun($pdo, function () use ($pdo, $walletId, $amount, $date, $note, $by) {
+        $w = wlLockTreasury($pdo, $walletId);
         return wlApply($pdo, $w, -$amount, 'withdraw', ['date' => $date, 'note' => $note, 'by' => $by]);
     });
 }
 
-// تحويل بين محفظتين (تغذية من الرئيسية أو إرجاع إليها)
-function wlTransfer(PDO $pdo, $fromId, $toId, $amount, $date, $note, $by)
+// قيد طرفي تحويل على محفظتين مقفولتين (قد تختلف عملتاهما)
+function wlPostTransfer(PDO $pdo, array &$from, array &$to, $amtFrom, $amtTo, $fx, $date, $note, $by, $forceFrom = false)
+{
+    $base = baseCurrency();
+    if ($from['currency'] === $base) {
+        $baseAmt = $amtFrom;
+    } elseif ($to['currency'] === $base) {
+        $baseAmt = $amtTo;
+    } else {
+        $baseAmt = round($amtFrom * currencyRate($from['currency']), 2);
+    }
+    $ref = bin2hex(random_bytes(8));
+    wlApply($pdo, $from, -$amtFrom, 'transfer_out', [
+        'date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $to['id'],
+        'fx' => $fx, 'base' => -$baseAmt, 'force' => $forceFrom,
+    ]);
+    return wlApply($pdo, $to, $amtTo, 'transfer_in', [
+        'date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $from['id'],
+        'fx' => $fx, 'base' => $baseAmt,
+    ]);
+}
+
+// حفظ سعر الصرف المستخدم كسعر افتراضي (عندما يكون أحد الطرفين العملة الأساسية)
+function wlRememberFx(PDO $pdo, $a, $b, $fx)
+{
+    $base = baseCurrency();
+    if ($fx > 0 && $a !== $b && ($a === $base || $b === $base)) {
+        $other = $a === $base ? $b : $a;
+        $pdo->prepare("UPDATE wl_currencies SET rate = ?, updated_at = NOW() WHERE code = ? AND is_base = 0")->execute([$fx, $other]);
+        wlCurrencies(true);
+    }
+}
+
+// تحويل بين أي محفظتين. $amount بعملة المحفظة المصدر؛ إذا اختلفت العملتان يلزم سعر الصرف
+// بصيغة «1 أقوى = X أضعف» ويُحسب المبلغ الواصل تلقائياً (مثال: 100$ × 13800 = 1,380,000 ل.س)
+function wlTransfer(PDO $pdo, $fromId, $toId, $amount, $date, $note, $by, $fx = null, $rememberFx = true)
 {
     if ((int)$fromId === (int)$toId) {
         throw new WalletError('لا يمكن التحويل لنفس المحفظة');
     }
-    return wlRun($pdo, function () use ($pdo, $fromId, $toId, $amount, $date, $note, $by) {
+    return wlRun($pdo, function () use ($pdo, $fromId, $toId, $amount, $date, $note, $by, $fx, $rememberFx) {
         $l    = wlLock($pdo, [$fromId, $toId]);
         $from = $l[(int)$fromId];
         $to   = $l[(int)$toId];
         if ((int)$to['active'] !== 1 || !empty($to['archived'])) {
             throw new WalletError('المحفظة «' . $to['name'] . '» موقوفة');
         }
-        $ref = bin2hex(random_bytes(8));
-        wlApply($pdo, $from, -$amount, 'transfer_out', [
-            'date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $to['id'],
-        ]);
-        return wlApply($pdo, $to, $amount, 'transfer_in', [
-            'date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $from['id'],
-        ]);
+        if (!empty($from['archived'])) {
+            throw new WalletError('المحفظة «' . $from['name'] . '» مؤرشفة');
+        }
+        $same  = $from['currency'] === $to['currency'];
+        $fx    = $same ? null : (float)$fx;
+        $amtTo = wlFxConvert($amount, $from['currency'], $to['currency'], (float)$fx);
+        if ($amtTo <= 0) {
+            throw new WalletError('المبلغ بعد التحويل صفر — راجع سعر الصرف');
+        }
+        $id = wlPostTransfer($pdo, $from, $to, $amount, $amtTo, $fx, $date, $note, $by);
+        if (!$same && $rememberFx) {
+            wlRememberFx($pdo, $from['currency'], $to['currency'], $fx);
+        }
+        return $id;
     });
 }
 
@@ -217,17 +317,19 @@ function wlRecalcBalances(PDO $pdo)
 // ملخص كل المحافظ لفترة — مصدر واحد للداشبورد والويدجت والـ API
 function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId = null, $withArchived = false)
 {
-    $sql = "SELECT w.id, w.user_id, w.name, w.is_main, w.balance, w.active,
+    $sql = "SELECT w.id, w.user_id, w.name, w.currency, w.is_main, w.balance, w.active, w.archived,
                u.full_name AS owner, u.username,
                COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_spent,
                COALESCE(SUM(CASE WHEN t.amount>0 AND t.type<>'opening' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
+               COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -COALESCE(t.base_amount,t.amount) END),0) AS month_spent_base,
+               COALESCE(SUM(CASE WHEN t.amount>0 AND t.type<>'opening' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN COALESCE(t.base_amount,t.amount) END),0) AS month_in_base,
                MAX(CASE WHEN t.voided=0 THEN t.txn_date END) AS last_move,
                MAX(CASE WHEN t.voided=0 THEN t.created_at END) AS last_activity
             FROM wl_wallets w
             LEFT JOIN wl_users u ON u.id = w.user_id
             LEFT JOIN wl_transactions t ON t.wallet_id = w.id
             WHERE 1=1";
-    $p = [$from, $to, $from, $to];
+    $p = [$from, $to, $from, $to, $from, $to, $from, $to];
     if ($activeOnly) {
         $sql .= " AND w.active = 1";
     }
@@ -238,7 +340,7 @@ function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId 
         $sql .= " AND w.id = ?";
         $p[] = (int)$walletId;
     }
-    $sql .= " GROUP BY w.id, w.user_id, w.name, w.is_main, w.balance, w.active, u.full_name, u.username
+    $sql .= " GROUP BY w.id, w.user_id, w.name, w.currency, w.is_main, w.balance, w.active, w.archived, u.full_name, u.username
               ORDER BY w.is_main DESC, w.active DESC, w.name";
     $st = $pdo->prepare($sql);
     $st->execute($p);
@@ -281,33 +383,34 @@ function wlCurrentOpening(PDO $pdo, $walletId)
     return $st->fetch();
 }
 
-// تسليم العهدة وأرشفة المحفظة: تُصفّى المحفظة إلى صفر عبر الرئيسية ثم تُخفى ويوقف حساب صاحبها.
-// الرصيد الموجب يُرجَع للرئيسية، والسالب (مستحق له) يُدفع له من الرئيسية.
-function wlArchiveWallet(PDO $pdo, $walletId, $note, $by)
+// تسليم العهدة وأرشفة المحفظة: تُصفّى إلى صفر عبر محفظة رئيسية ثم تُخفى ويوقف حساب صاحبها.
+// الرصيد الموجب يُرجَع للرئيسية، والسالب (مستحق له) يُدفع له منها؛ مع تحويل العملة إن اختلفت.
+function wlArchiveWallet(PDO $pdo, $walletId, $treasuryId, $fx, $note, $by)
 {
-    return wlRun($pdo, function () use ($pdo, $walletId, $note, $by) {
-        $main = wlMainWallet($pdo);
-        if ((int)$walletId === (int)$main['id']) {
-            throw new WalletError('لا يمكن أرشفة المحفظة الرئيسية');
+    return wlRun($pdo, function () use ($pdo, $walletId, $treasuryId, $fx, $note, $by) {
+        if ((int)$walletId === (int)$treasuryId) {
+            throw new WalletError('اختر محفظة رئيسية أخرى للتسوية');
         }
-        $l = wlLock($pdo, [$walletId, $main['id']]);
+        $l = wlLock($pdo, [$walletId, $treasuryId]);
         $w = $l[(int)$walletId];
-        $m = $l[(int)$main['id']];
+        $m = $l[(int)$treasuryId];
         if (!empty($w['archived'])) {
             throw new WalletError('المحفظة مؤرشفة مسبقاً');
+        }
+        if ((int)$m['is_main'] !== 1 || !empty($m['archived'])) {
+            throw new WalletError('اختر محفظة رئيسية للتسوية');
         }
         $bal  = round((float)$w['balance'], 2);
         $date = date('Y-m-d');
         $note = trim((string)$note) !== '' ? $note : 'تسليم العهدة عند الأرشفة';
-        if ($bal != 0) {
-            $ref = bin2hex(random_bytes(8));
-            if ($bal > 0) {
-                wlApply($pdo, $w, -$bal, 'transfer_out', ['date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $m['id'], 'force' => true]);
-                wlApply($pdo, $m, $bal, 'transfer_in', ['date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $w['id']]);
-            } else {
-                wlApply($pdo, $m, $bal, 'transfer_out', ['date' => $date, 'note' => $note . ' (تسوية مستحق له)', 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $w['id']]);
-                wlApply($pdo, $w, -$bal, 'transfer_in', ['date' => $date, 'note' => $note . ' (تسوية مستحق له)', 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $m['id']]);
-            }
+        $same = $w['currency'] === $m['currency'];
+        $fx   = $same ? null : (float)$fx;
+        if ($bal > 0) {
+            $amtM = wlFxConvert($bal, $w['currency'], $m['currency'], (float)$fx);
+            wlPostTransfer($pdo, $w, $m, $bal, $amtM, $fx, $date, $note, $by, true);
+        } elseif ($bal < 0) {
+            $amtM = wlFxConvert(-$bal, $w['currency'], $m['currency'], (float)$fx);
+            wlPostTransfer($pdo, $m, $w, $amtM, -$bal, $fx, $date, $note . ' (تسوية مستحق له)', $by);
         }
         $pdo->prepare("UPDATE wl_wallets SET archived = 1, archived_at = NOW(), active = 0 WHERE id = ?")->execute([$w['id']]);
         if ($w['user_id']) {
@@ -357,7 +460,8 @@ function wlIntegrity(PDO $pdo)
 // مصاريف حسب التصنيف لفترة (لمحفظة أو للكل)
 function wlCategoryTotals(PDO $pdo, $from, $to, $walletId = null)
 {
-    $sql = "SELECT c.id, c.name, c.icon, SUM(-t.amount) AS total, COUNT(*) AS cnt
+    $col = $walletId ? 't.amount' : 'COALESCE(t.base_amount, t.amount)';
+    $sql = "SELECT c.id, c.name, c.icon, SUM(-$col) AS total, COUNT(*) AS cnt
             FROM wl_transactions t JOIN wl_categories c ON c.id = t.category_id
             WHERE t.type = 'expense' AND t.voided = 0 AND t.txn_date BETWEEN ? AND ?";
     $p = [$from, $to];
@@ -452,11 +556,12 @@ function wlTxnWhere(array $f)
 function wlTxnTotals(PDO $pdo, array $f)
 {
     list($where, $p) = wlTxnWhere($f);
+    $a = !empty($f['wallet_id']) ? 't.amount' : 'COALESCE(t.base_amount, t.amount)';
     $st = $pdo->prepare("SELECT
-            COALESCE(SUM(CASE WHEN t.amount > 0 AND t.type <> 'opening' THEN t.amount END), 0) AS inflow,
-            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN -t.amount END), 0) AS spent,
-            COALESCE(SUM(CASE WHEN t.amount < 0 AND t.type NOT IN ('expense','opening') THEN -t.amount END), 0) AS outflow,
-            COALESCE(SUM(CASE WHEN t.type = 'opening' THEN t.amount END), 0) AS opening,
+            COALESCE(SUM(CASE WHEN t.amount > 0 AND t.type <> 'opening' THEN $a END), 0) AS inflow,
+            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN -$a END), 0) AS spent,
+            COALESCE(SUM(CASE WHEN t.amount < 0 AND t.type NOT IN ('expense','opening') THEN -$a END), 0) AS outflow,
+            COALESCE(SUM(CASE WHEN t.type = 'opening' THEN $a END), 0) AS opening,
             COUNT(*) AS cnt
         FROM wl_transactions t WHERE $where AND t.voided = 0");
     $st->execute($p);
@@ -466,13 +571,15 @@ function wlTxnTotals(PDO $pdo, array $f)
 function wlTxnQuery(PDO $pdo, array $f, $limit = 200, $offset = 0)
 {
     list($where, $p) = wlTxnWhere($f);
-    $sql = "SELECT t.*, w.name AS wallet_name, w.is_main,
+    $sql = "SELECT t.*, w.name AS wallet_name, w.is_main, w.currency,
+                   cw.currency AS counter_currency, ct.amount AS counter_amount,
                    c.name AS cat_name, c.icon AS cat_icon,
                    cw.name AS counter_name, u.full_name AS creator_name
             FROM wl_transactions t
             JOIN wl_wallets w ON w.id = t.wallet_id
             LEFT JOIN wl_categories c ON c.id = t.category_id
             LEFT JOIN wl_wallets cw ON cw.id = t.counter_wallet_id
+            LEFT JOIN wl_transactions ct ON ct.ref = t.ref AND ct.id <> t.id
             LEFT JOIN wl_users u ON u.id = t.created_by
             WHERE $where
             ORDER BY t.txn_date DESC, t.id DESC";

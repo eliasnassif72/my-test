@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $signed = post('sign') === 'neg' ? -$amount : $amount;
             wlSetOpening($pdo, $wid, $signed, $date, post('note'), $me['id']);
             $w = wlGetWallet($pdo, $wid);
-            flash('success', 'تم ضبط رصيد أول المدة لـ«' . $w['name'] . '»: ' . money($signed) . ' — الرصيد الحالي ' . money($w['balance']));
+            flash('success', 'تم ضبط رصيد أول المدة لـ«' . $w['name'] . '»: ' . money($signed, true, $w['currency']) . ' — الرصيد الحالي ' . money($w['balance'], true, $w['currency']));
         }
     } catch (WalletError $ex) {
         flash('error', $ex->getMessage());
@@ -60,10 +60,10 @@ require __DIR__ . '/includes/header.php';
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr))">
 <?php foreach ($rows as $r): $has = $r['op_id'] !== null; $neg = $has && $r['op_amount'] < 0; ?>
   <div class="card" style="margin:0">
-    <h2 style="margin-bottom:6px"><?= $r['is_main'] ? '🏦' : '👤' ?> <?= e($r['name']) ?></h2>
-    <div class="sub">الرصيد الحالي: <b class="num"><?= e(money($r['balance'])) ?></b></div>
+    <h2 style="margin-bottom:6px"><?= $r['is_main'] ? '🏦' : '👤' ?> <?= e($r['name']) ?> <span class="pill p-opening"><?= e($r['currency']) ?></span></h2>
+    <div class="sub">الرصيد الحالي: <b class="num"><?= e(money($r['balance'], true, $r['currency'])) ?></b></div>
     <div class="sub" style="margin-bottom:10px">رصيد أول المدة:
-      <?php if ($has): ?><b class="num <?= $neg ? 'neg' : 'pos' ?>"><?= e(money($r['op_amount'])) ?></b> <span class="num">(<?= e($r['op_date']) ?>)</span><?php else: ?>— غير مضبوط<?php endif; ?>
+      <?php if ($has): ?><b class="num <?= $neg ? 'neg' : 'pos' ?>"><?= e(money($r['op_amount'], true, $r['currency'])) ?></b> <span class="num">(<?= e($r['op_date']) ?>)</span><?php else: ?>— غير مضبوط<?php endif; ?>
     </div>
     <form method="post">
       <?= csrfField() ?>

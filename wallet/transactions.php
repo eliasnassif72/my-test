@@ -24,11 +24,11 @@ if (get('export') === 'csv') {
     header('Content-Disposition: attachment; filename="transactions_' . $f['from'] . '_' . $f['to'] . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['#', 'التاريخ', 'المحفظة', 'النوع', 'التصنيف', 'الطرف الآخر', 'المبلغ', 'الرصيد بعدها', 'ملاحظة', 'بواسطة', 'الحالة']);
+    fputcsv($out, ['#', 'التاريخ', 'المحفظة', 'النوع', 'التصنيف', 'الطرف الآخر', 'المبلغ', 'العملة', 'سعر الصرف', 'المعادل بـ' . baseCurrency(), 'الرصيد بعدها', 'ملاحظة', 'بواسطة', 'الحالة']);
     foreach ($rows as $r) {
         fputcsv($out, [
             $r['id'], $r['txn_date'], $r['wallet_name'], txnTypeLabel($r['type']),
-            $r['cat_name'], $r['counter_name'], $r['amount'], $r['balance_after'],
+            $r['cat_name'], $r['counter_name'], $r['amount'], $r['currency'], $r['fx_rate'], $r['base_amount'], $r['balance_after'],
             $r['note'], $r['creator_name'], (int)$r['voided'] === 1 ? 'ملغاة' : '',
         ]);
     }
@@ -38,6 +38,14 @@ if (get('export') === 'csv') {
 
 $rows = wlTxnQuery($pdo, $f, 500);
 $tot = wlTxnTotals($pdo, $f);
+// مع اختيار محفظة: بعملتها؛ لكل المحافظ: بما يعادل العملة الأساسية
+$totCur = null;
+if ($f['wallet_id']) {
+    $fw = wlGetWallet($pdo, $f['wallet_id']);
+    $totCur = $fw ? $fw['currency'] : null;
+}
+$catCur = $totCur;
+$eqv = !$f['wallet_id'] && (int)$pdo->query("SELECT COUNT(DISTINCT currency) FROM wl_wallets")->fetchColumn() > 1 ? ' (بما يعادل)' : '';
 $sumIn = (float)$tot['inflow']; $sumExp = (float)$tot['spent']; $sumOut = (float)$tot['outflow'];
 $catTotals = ($f['type'] === '' || $f['type'] === 'expense')
     ? wlCategoryTotals($pdo, $f['from'], $f['to'], $f['wallet_id'] ?: null) : [];
@@ -81,9 +89,9 @@ require __DIR__ . '/includes/header.php';
 </form>
 
 <div class="grid g3" style="margin-bottom:16px">
-  <div class="stat"><div class="lbl">💸 مجموع الوارد</div><div class="val num pos"><?= e(money($sumIn)) ?></div></div>
-  <div class="stat"><div class="lbl">➖ مجموع المصاريف</div><div class="val num neg"><?= e(money($sumExp)) ?></div></div>
-  <div class="stat"><div class="lbl">↩️ تحويلات صادرة / سحب</div><div class="val num"><?= e(money($sumOut)) ?></div></div>
+  <div class="stat"><div class="lbl">💸 مجموع الوارد<?= $eqv ?></div><div class="val num pos"><?= e(money($sumIn, true, $totCur)) ?></div></div>
+  <div class="stat"><div class="lbl">➖ مجموع المصاريف<?= $eqv ?></div><div class="val num neg"><?= e(money($sumExp, true, $totCur)) ?></div></div>
+  <div class="stat"><div class="lbl">↩️ تحويلات صادرة / سحب</div><div class="val num"><?= e(money($sumOut, true, $totCur)) ?></div></div>
 </div>
 
 <?php if ($catTotals): ?>
