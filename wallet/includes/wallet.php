@@ -48,11 +48,11 @@ function wlApply(PDO $pdo, array &$wallet, $delta, $type, array $o)
 {
     $delta = round((float)$delta, 2);
     $new   = round((float)$wallet['balance'] + $delta, 2);
-    if ($delta < 0 && $new < 0 && !wlAllowNegative($pdo)) {
+    if ($delta < 0 && $new < 0 && empty($o['force']) && !wlAllowNegative($pdo)) {
         throw new WalletError('الرصيد غير كافٍ في «' . $wallet['name'] . '» — المتاح: ' . money($wallet['balance']));
     }
     // المحفظة الموقوفة لا تقبل مصاريف جديدة، لكن يبقى بإمكان المدير إرجاع رصيدها للرئيسية
-    if ($type === 'expense' && (int)$wallet['active'] !== 1) {
+    if ($type === 'expense' && ((int)$wallet['active'] !== 1 || !empty($wallet['archived']))) {
         throw new WalletError('المحفظة «' . $wallet['name'] . '» موقوفة');
     }
     $pdo->prepare("UPDATE wl_wallets SET balance = ? WHERE id = ?")->execute([$new, $wallet['id']]);
@@ -119,7 +119,7 @@ function wlTransfer(PDO $pdo, $fromId, $toId, $amount, $date, $note, $by)
         $l    = wlLock($pdo, [$fromId, $toId]);
         $from = $l[(int)$fromId];
         $to   = $l[(int)$toId];
-        if ((int)$to['active'] !== 1) {
+        if ((int)$to['active'] !== 1 || !empty($to['archived'])) {
             throw new WalletError('المحفظة «' . $to['name'] . '» موقوفة');
         }
         $ref = bin2hex(random_bytes(8));
@@ -215,12 +215,12 @@ function wlRecalcBalances(PDO $pdo)
 }
 
 // ملخص كل المحافظ لفترة — مصدر واحد للداشبورد والويدجت والـ API
-function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId = null)
+function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId = null, $withArchived = false)
 {
     $sql = "SELECT w.id, w.user_id, w.name, w.is_main, w.balance, w.active,
                u.full_name AS owner, u.username,
                COALESCE(SUM(CASE WHEN t.type='expense' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN -t.amount END),0) AS month_spent,
-               COALESCE(SUM(CASE WHEN t.amount>0 AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
+               COALESCE(SUM(CASE WHEN t.amount>0 AND t.type<>'opening' AND t.voided=0 AND t.txn_date BETWEEN ? AND ? THEN t.amount END),0) AS month_in,
                MAX(CASE WHEN t.voided=0 THEN t.txn_date END) AS last_move,
                MAX(CASE WHEN t.voided=0 THEN t.created_at END) AS last_activity
             FROM wl_wallets w
@@ -231,6 +231,9 @@ function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId 
     if ($activeOnly) {
         $sql .= " AND w.active = 1";
     }
+    if (!$withArchived && !$walletId) {
+        $sql .= " AND w.archived = 0";
+    }
     if ($walletId) {
         $sql .= " AND w.id = ?";
         $p[] = (int)$walletId;
@@ -240,6 +243,105 @@ function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId 
     $st = $pdo->prepare($sql);
     $st->execute($p);
     return $st->fetchAll();
+}
+
+// رصيد أول المدة — قيد افتتاحي لمطابقة الحسابات القديمة (لا يُخصم من الرئيسية).
+// موجب = مبلغ في عهدة صاحب المحفظة، سالب = مبلغ له على الشركة.
+// إعادة الضبط تُلغي القيد السابق (يبقى ظاهراً كـ«ملغى») وتسجّل الجديد؛ القيمة 0 تحذف الرصيد الافتتاحي.
+function wlSetOpening(PDO $pdo, $walletId, $signedAmount, $date, $note, $by)
+{
+    return wlRun($pdo, function () use ($pdo, $walletId, $signedAmount, $date, $note, $by) {
+        $l = wlLock($pdo, [$walletId]);
+        $w = $l[(int)$walletId];
+        if (!empty($w['archived'])) {
+            throw new WalletError('المحفظة مؤرشفة — استعدها أولاً');
+        }
+        $st = $pdo->prepare("SELECT * FROM wl_transactions WHERE wallet_id = ? AND type = 'opening' AND voided = 0 FOR UPDATE");
+        $st->execute([$w['id']]);
+        foreach ($st->fetchAll() as $old) {
+            $w['balance'] = round((float)$w['balance'] - (float)$old['amount'], 2);
+            $pdo->prepare("UPDATE wl_wallets SET balance = ? WHERE id = ?")->execute([$w['balance'], $w['id']]);
+            $pdo->prepare("UPDATE wl_transactions SET voided = 1, voided_by = ?, voided_at = NOW(), void_reason = ? WHERE id = ?")
+                ->execute([(int)$by, 'استُبدل برصيد أول مدة جديد', $old['id']]);
+        }
+        $signedAmount = round((float)$signedAmount, 2);
+        if ($signedAmount == 0) {
+            return 0;
+        }
+        return wlApply($pdo, $w, $signedAmount, 'opening', [
+            'date' => $date, 'note' => $note, 'by' => $by, 'force' => true,
+        ]);
+    });
+}
+
+function wlCurrentOpening(PDO $pdo, $walletId)
+{
+    $st = $pdo->prepare("SELECT * FROM wl_transactions WHERE wallet_id = ? AND type = 'opening' AND voided = 0 ORDER BY id DESC LIMIT 1");
+    $st->execute([(int)$walletId]);
+    return $st->fetch();
+}
+
+// تسليم العهدة وأرشفة المحفظة: تُصفّى المحفظة إلى صفر عبر الرئيسية ثم تُخفى ويوقف حساب صاحبها.
+// الرصيد الموجب يُرجَع للرئيسية، والسالب (مستحق له) يُدفع له من الرئيسية.
+function wlArchiveWallet(PDO $pdo, $walletId, $note, $by)
+{
+    return wlRun($pdo, function () use ($pdo, $walletId, $note, $by) {
+        $main = wlMainWallet($pdo);
+        if ((int)$walletId === (int)$main['id']) {
+            throw new WalletError('لا يمكن أرشفة المحفظة الرئيسية');
+        }
+        $l = wlLock($pdo, [$walletId, $main['id']]);
+        $w = $l[(int)$walletId];
+        $m = $l[(int)$main['id']];
+        if (!empty($w['archived'])) {
+            throw new WalletError('المحفظة مؤرشفة مسبقاً');
+        }
+        $bal  = round((float)$w['balance'], 2);
+        $date = date('Y-m-d');
+        $note = trim((string)$note) !== '' ? $note : 'تسليم العهدة عند الأرشفة';
+        if ($bal != 0) {
+            $ref = bin2hex(random_bytes(8));
+            if ($bal > 0) {
+                wlApply($pdo, $w, -$bal, 'transfer_out', ['date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $m['id'], 'force' => true]);
+                wlApply($pdo, $m, $bal, 'transfer_in', ['date' => $date, 'note' => $note, 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $w['id']]);
+            } else {
+                wlApply($pdo, $m, $bal, 'transfer_out', ['date' => $date, 'note' => $note . ' (تسوية مستحق له)', 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $w['id']]);
+                wlApply($pdo, $w, -$bal, 'transfer_in', ['date' => $date, 'note' => $note . ' (تسوية مستحق له)', 'by' => $by, 'ref' => $ref, 'counter_wallet_id' => $m['id']]);
+            }
+        }
+        $pdo->prepare("UPDATE wl_wallets SET archived = 1, archived_at = NOW(), active = 0 WHERE id = ?")->execute([$w['id']]);
+        if ($w['user_id']) {
+            $pdo->prepare("UPDATE wl_users SET active = 0 WHERE id = ?")->execute([$w['user_id']]);
+        }
+        return $bal;
+    });
+}
+
+function wlRestoreWallet(PDO $pdo, $walletId)
+{
+    $pdo->prepare("UPDATE wl_wallets SET archived = 0, archived_at = NULL, active = 1 WHERE id = ? AND is_main = 0")->execute([(int)$walletId]);
+    $pdo->prepare("UPDATE wl_users u JOIN wl_wallets w ON w.user_id = u.id SET u.active = 1 WHERE w.id = ?")->execute([(int)$walletId]);
+}
+
+// حذف نهائي لمستخدم ومحفظته — مسموح فقط إذا لم يُسجَّل عليهما أي شيء إطلاقاً
+function wlDeleteUser(PDO $pdo, $userId)
+{
+    return wlRun($pdo, function () use ($pdo, $userId) {
+        $st = $pdo->prepare("SELECT id, balance FROM wl_wallets WHERE user_id = ? FOR UPDATE");
+        $st->execute([(int)$userId]);
+        $w = $st->fetch();
+        $st = $pdo->prepare("SELECT COUNT(*) FROM wl_transactions WHERE created_by = ? OR wallet_id = ? OR counter_wallet_id = ?");
+        $wid = $w ? (int)$w['id'] : 0;
+        $st->execute([(int)$userId, $wid, $wid]);
+        if ((int)$st->fetchColumn() > 0) {
+            throw new WalletError('لا يمكن الحذف: عليها حركات مسجّلة — استخدم «تسليم العهدة وأرشفة» بدلاً من ذلك');
+        }
+        if ($w) {
+            $pdo->prepare("DELETE FROM wl_wallets WHERE id = ?")->execute([$wid]);
+        }
+        $pdo->prepare("DELETE FROM wl_users WHERE id = ?")->execute([(int)$userId]);
+        return true;
+    });
 }
 
 // فحص تطابق الأرصدة المخزنة مع مجموع الحركات
@@ -351,9 +453,10 @@ function wlTxnTotals(PDO $pdo, array $f)
 {
     list($where, $p) = wlTxnWhere($f);
     $st = $pdo->prepare("SELECT
-            COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount END), 0) AS inflow,
+            COALESCE(SUM(CASE WHEN t.amount > 0 AND t.type <> 'opening' THEN t.amount END), 0) AS inflow,
             COALESCE(SUM(CASE WHEN t.type = 'expense' THEN -t.amount END), 0) AS spent,
-            COALESCE(SUM(CASE WHEN t.amount < 0 AND t.type <> 'expense' THEN -t.amount END), 0) AS outflow,
+            COALESCE(SUM(CASE WHEN t.amount < 0 AND t.type NOT IN ('expense','opening') THEN -t.amount END), 0) AS outflow,
+            COALESCE(SUM(CASE WHEN t.type = 'opening' THEN t.amount END), 0) AS opening,
             COUNT(*) AS cnt
         FROM wl_transactions t WHERE $where AND t.voided = 0");
     $st->execute($p);

@@ -56,9 +56,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'toggle') {
             $id = (int)post('id');
             if ($id === (int)$me['id']) throw new WalletError('لا يمكنك إيقاف حسابك');
+            $st = $pdo->prepare("SELECT COUNT(*) FROM wl_wallets WHERE user_id = ? AND archived = 1");
+            $st->execute([$id]);
+            if ($st->fetchColumn()) throw new WalletError('محفظته مؤرشفة — استخدم «استعادة» من قائمة المؤرشفين');
             $pdo->prepare("UPDATE wl_users SET active = 1 - active WHERE id = ?")->execute([$id]);
             $pdo->prepare("UPDATE wl_wallets w JOIN wl_users u ON u.id = w.user_id SET w.active = u.active WHERE u.id = ?")->execute([$id]);
             flash('success', 'تم تغيير حالة الحساب');
+        } elseif ($action === 'delete') {
+            $id = (int)post('id');
+            if ($id === (int)$me['id']) throw new WalletError('لا يمكنك حذف حسابك');
+            wlDeleteUser($pdo, $id);
+            flash('success', 'تم حذف المستخدم ومحفظته نهائياً');
         } elseif ($action === 'create_wallet') {
             $id = (int)post('id');
             $st = $pdo->prepare("SELECT full_name FROM wl_users WHERE id = ?");
@@ -79,12 +87,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('users.php');
 }
 
-$users = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance
-                      FROM wl_users u LEFT JOIN wl_wallets w ON w.user_id = u.id
-                      ORDER BY u.active DESC, u.role, u.full_name")->fetchAll();
+$all = $pdo->query("SELECT u.*, w.id AS wallet_id, w.name AS wallet_name, w.balance,
+                           COALESCE(w.archived, 0) AS archived, w.archived_at,
+                           (SELECT COUNT(*) FROM wl_transactions t
+                             WHERE t.created_by = u.id OR t.wallet_id = w.id OR t.counter_wallet_id = w.id) AS txn_count
+                    FROM wl_users u LEFT JOIN wl_wallets w ON w.user_id = u.id
+                    ORDER BY u.active DESC, u.role, u.full_name")->fetchAll();
+$users = [];
+$archivedUsers = [];
+foreach ($all as $u) {
+    if ((int)$u['archived'] === 1) {
+        $archivedUsers[] = $u;
+    } else {
+        $users[] = $u;
+    }
+}
 $edit = null;
 if (get('edit')) {
-    foreach ($users as $u) {
+    foreach ($all as $u) {
         if ((int)$u['id'] === (int)get('edit')) $edit = $u;
     }
 }
@@ -160,6 +180,15 @@ require __DIR__ . '/includes/header.php';
               <?= csrfField() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
               <button class="btn btn-sm <?= (int)$u['active'] === 1 ? 'btn-red' : 'btn-light' ?>"><?= (int)$u['active'] === 1 ? 'إيقاف' : 'تفعيل' ?></button>
             </form>
+            <?php if ($u['wallet_id']): ?>
+              <a class="btn btn-gray btn-sm" href="archive.php?wallet=<?= (int)$u['wallet_id'] ?>" title="تسليم العهدة وأرشفة">📦</a>
+            <?php endif; ?>
+            <?php if ((int)$u['txn_count'] === 0): ?>
+            <form method="post" data-confirm="حذف «<?= e($u['full_name']) ?>» ومحفظته نهائياً؟ لا يمكن التراجع.">
+              <?= csrfField() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+              <button class="btn btn-red btn-sm" title="حذف نهائي (لا توجد حركات)">🗑</button>
+            </form>
+            <?php endif; ?>
             <?php endif; ?>
           </td>
         </tr>
@@ -167,7 +196,34 @@ require __DIR__ . '/includes/header.php';
       </tbody>
     </table>
     </div>
-    <p class="hint">لا يُحذف المستخدم حفاظاً على سجل الحركات — أوقفه بدلاً من ذلك. المحفظة الموقوفة لا تقبل مصاريف ولا تغذية.</p>
+    <p class="hint">🗑 الحذف النهائي يظهر فقط لمن ليس عليه أي حركة (أُنشئ بالغلط). لمن ترك العمل استخدم 📦 «تسليم العهدة وأرشفة»: تُصفّى العهدة وتُخفى المحفظة ويبقى سجلها. «إيقاف» يمنع الدخول مؤقتاً فقط.</p>
   </div>
+</div>
+
+<div class="card" id="archived">
+  <h2>📦 المحافظ المؤرشفة (<?= count($archivedUsers) ?>)</h2>
+  <?php if (!$archivedUsers): ?>
+    <div class="empty">لا توجد محافظ مؤرشفة</div>
+  <?php else: ?>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>الاسم</th><th>تاريخ الأرشفة</th><th>الرصيد</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($archivedUsers as $u): ?>
+      <tr>
+        <td><b><?= e($u['full_name']) ?></b><div class="sub" dir="ltr" style="text-align:right"><?= e($u['username']) ?></div></td>
+        <td class="sub num"><?= e(substr((string)$u['archived_at'], 0, 10)) ?></td>
+        <td class="num"><?= e(money($u['balance'])) ?></td>
+        <td class="actions">
+          <a class="btn btn-gray btn-sm" href="wallet.php?id=<?= (int)$u['wallet_id'] ?>">السجل</a>
+          <form method="post" action="archive.php" data-confirm="استعادة المحفظة وتفعيل حساب «<?= e($u['full_name']) ?>»؟">
+            <?= csrfField() ?><input type="hidden" name="wallet_id" value="<?= (int)$u['wallet_id'] ?>"><input type="hidden" name="action" value="restore">
+            <button class="btn btn-light btn-sm">↩️ استعادة</button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <?php endif; ?>
 </div>
 <?php require __DIR__ . '/includes/footer.php';

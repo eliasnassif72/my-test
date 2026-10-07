@@ -137,6 +137,7 @@ tr.voided td.keep { text-decoration: none; }
 .p-expense { background: var(--red-bg); color: var(--red); }
 .p-transfer_in, .p-deposit { background: var(--green-bg); color: var(--green); }
 .p-transfer_out, .p-withdraw { background: var(--amber-bg); color: var(--amber); }
+.p-opening { background: #EEF2FF; color: #4338CA; }
 .p-void { background: #F1F5F9; color: #64748B; }
 
 /* أشرطة التصنيفات */

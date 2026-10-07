@@ -49,7 +49,7 @@ function parseAmount($raw)
     $raw = strtr($raw, [
         '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
         '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
-        '٫' => '.', '٬' => '', ',' => '', ' ' => '',
+        '٫' => '.', '٬' => '', ',' => '', ' ' => '', "\u{2066}" => '', "\u{2069}" => '',
     ]);
     if ($raw === '' || !preg_match('/^\d+(\.\d{1,2})?$/', $raw)) {
         return null;
@@ -125,6 +125,7 @@ function txnTypeLabel($type)
         'transfer_in'  => 'تغذية واردة',
         'transfer_out' => 'تحويل صادر',
         'expense'      => 'مصروف',
+        'opening'      => 'رصيد أول المدة',
     ];
     return isset($map[$type]) ? $map[$type] : $type;
 }

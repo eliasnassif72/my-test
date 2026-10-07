@@ -6,7 +6,7 @@ $admin = $me['role'] === 'admin';
 
 $f = [
     'wallet_id'   => $admin ? (int)get('wallet') : (int)$me['wallet_id'],
-    'type'        => in_array(get('type'), ['expense', 'funding', 'deposit', 'withdraw', 'transfer_in', 'transfer_out'], true) ? get('type') : '',
+    'type'        => in_array(get('type'), ['expense', 'funding', 'deposit', 'withdraw', 'transfer_in', 'transfer_out', 'opening'], true) ? get('type') : '',
     'category_id' => (int)get('cat'),
     'from'        => validDate(get('from')) ? get('from') : date('Y-m-01'),
     'to'          => validDate(get('to')) ? get('to') : date('Y-m-d'),
@@ -45,7 +45,7 @@ if ($f['category_id']) {
     $catTotals = array_values(array_filter($catTotals, function ($c) use ($f) { return (int)$c['id'] === $f['category_id']; }));
 }
 
-$wallets = $admin ? $pdo->query("SELECT id, name, is_main FROM wl_wallets ORDER BY is_main DESC, name")->fetchAll() : [];
+$wallets = $admin ? $pdo->query("SELECT id, name, is_main, archived FROM wl_wallets ORDER BY is_main DESC, archived, name")->fetchAll() : [];
 $cats = $pdo->query("SELECT id, name, icon FROM wl_categories ORDER BY sort_order, name")->fetchAll();
 $qs = $_GET;
 $qs['export'] = 'csv';
@@ -59,7 +59,7 @@ require __DIR__ . '/includes/header.php';
   <?php if ($admin): ?>
   <div class="form-row"><label>المحفظة</label>
     <select name="wallet"><option value="">كل المحافظ</option>
-      <?php foreach ($wallets as $w): ?><option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $f['wallet_id'] ? 'selected' : '' ?>><?= $w['is_main'] ? '🏦 ' : '' ?><?= e($w['name']) ?></option><?php endforeach; ?>
+      <?php foreach ($wallets as $w): ?><option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $f['wallet_id'] ? 'selected' : '' ?>><?= $w['is_main'] ? '🏦 ' : '' ?><?= e($w['name']) ?><?= $w['archived'] ? ' (مؤرشفة)' : '' ?></option><?php endforeach; ?>
     </select></div>
   <?php endif; ?>
   <div class="form-row"><label>النوع</label>
@@ -67,6 +67,7 @@ require __DIR__ . '/includes/header.php';
       <option value="">الكل</option>
       <option value="expense" <?= $f['type'] === 'expense' ? 'selected' : '' ?>>مصاريف</option>
       <option value="funding" <?= $f['type'] === 'funding' ? 'selected' : '' ?>>تغذية وتحويلات</option>
+      <option value="opening" <?= $f['type'] === 'opening' ? 'selected' : '' ?>>رصيد أول المدة</option>
     </select></div>
   <div class="form-row"><label>التصنيف</label>
     <select name="cat"><option value="">الكل</option>

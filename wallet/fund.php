@@ -4,7 +4,7 @@ require __DIR__ . '/includes/bootstrap.php';
 $me = requireAdmin();
 
 $main    = wlMainWallet($pdo);
-$wallets = $pdo->query("SELECT id, name, balance, active FROM wl_wallets WHERE is_main = 0 ORDER BY active DESC, name")->fetchAll();
+$wallets = $pdo->query("SELECT id, name, balance, active FROM wl_wallets WHERE is_main = 0 AND archived = 0 ORDER BY active DESC, name")->fetchAll();
 
 $ops = [
     'topup'   => ['💸 تغذية محفظة', 'من الرئيسية ← إلى محفظة مستخدم'],

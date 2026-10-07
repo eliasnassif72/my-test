@@ -40,6 +40,12 @@ require __DIR__ . '/schema.php';
 require __DIR__ . '/functions.php';
 require __DIR__ . '/wallet.php';
 
+try {
+    wlSchemaMigrate($pdo);
+} catch (Exception $e) {
+    error_log('Wallet schema migrate failed: ' . $e->getMessage());
+}
+
 if (!defined('WL_NO_SESSION')) {
     if (session_status() === PHP_SESSION_NONE) {
         $params = ['httponly' => true, 'samesite' => 'Lax'];

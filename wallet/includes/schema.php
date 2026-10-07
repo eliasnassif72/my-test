@@ -24,6 +24,8 @@ function wlSchemaInstall(PDO $pdo)
         is_main    TINYINT(1) NOT NULL DEFAULT 0,
         balance    DECIMAL(15,2) NOT NULL DEFAULT 0,
         active     TINYINT(1) NOT NULL DEFAULT 1,
+        archived    TINYINT(1) NOT NULL DEFAULT 0,
+        archived_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_wallet_user (user_id)
     $tail");
@@ -40,7 +42,7 @@ function wlSchemaInstall(PDO $pdo)
     $pdo->exec("CREATE TABLE IF NOT EXISTS wl_transactions (
         id                INT AUTO_INCREMENT PRIMARY KEY,
         wallet_id         INT NOT NULL,
-        type              ENUM('deposit','withdraw','transfer_in','transfer_out','expense') NOT NULL,
+        type              ENUM('deposit','withdraw','transfer_in','transfer_out','expense','opening') NOT NULL,
         amount            DECIMAL(15,2) NOT NULL,
         balance_after     DECIMAL(15,2) NOT NULL,
         category_id       INT NULL,
@@ -106,4 +108,36 @@ function wlSchemaInstall(PDO $pdo)
     $st->execute(['currency', 'ل.س']);
     $st->execute(['allow_negative', '0']);
     $st->execute(['api_key', bin2hex(random_bytes(20))]);
+    $st->execute(['schema_version', (string)WL_SCHEMA_VERSION]);
+}
+
+define('WL_SCHEMA_VERSION', 2);
+
+// ترقية قاعدة بيانات قائمة إلى آخر هيكل — آمنة للتكرار، وتعمل تلقائياً من bootstrap
+function wlSchemaMigrate(PDO $pdo)
+{
+    if ((int)setting($pdo, 'schema_version', '1') >= WL_SCHEMA_VERSION) {
+        return;
+    }
+    $hasTable = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wl_wallets'")->fetchColumn();
+    if (!$hasTable) {
+        return; // لم يُثبَّت بعد — start.php ينشئ الهيكل الكامل
+    }
+    $col = function ($table, $column) use ($pdo) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $st->execute([$table, $column]);
+        return (int)$st->fetchColumn() > 0;
+    };
+    // v2: رصيد أول المدة + أرشفة المحافظ
+    $pdo->exec("ALTER TABLE wl_transactions MODIFY type
+        ENUM('deposit','withdraw','transfer_in','transfer_out','expense','opening') NOT NULL");
+    if (!$col('wl_wallets', 'archived')) {
+        $pdo->exec("ALTER TABLE wl_wallets ADD COLUMN archived TINYINT(1) NOT NULL DEFAULT 0 AFTER active");
+    }
+    if (!$col('wl_wallets', 'archived_at')) {
+        $pdo->exec("ALTER TABLE wl_wallets ADD COLUMN archived_at DATETIME NULL AFTER archived");
+    }
+    setSetting($pdo, 'schema_version', (string)WL_SCHEMA_VERSION);
 }

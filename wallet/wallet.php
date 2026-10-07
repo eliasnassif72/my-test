@@ -19,8 +19,10 @@ $to   = date('Y-m-t', strtotime($from));
 $prevM = date('Y-m', strtotime($from . ' -1 month'));
 $nextM = date('Y-m', strtotime($from . ' +1 month'));
 
-$st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM wl_transactions WHERE wallet_id=? AND voided=0 AND txn_date < ?");
-$st->execute([$wallet['id'], $from]);
+// رصيد أول المدة = كل ما قبل الشهر + قيد «رصيد أول المدة» إن وقع داخل الشهر
+$st = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM wl_transactions
+    WHERE wallet_id=? AND voided=0 AND (txn_date < ? OR (type='opening' AND txn_date <= ?))");
+$st->execute([$wallet['id'], $from, $to]);
 $opening = (float)$st->fetchColumn();
 
 $st = $pdo->prepare("SELECT
@@ -28,7 +30,7 @@ $st = $pdo->prepare("SELECT
         COALESCE(SUM(CASE WHEN type='expense' THEN -amount END),0) AS spent,
         COALESCE(SUM(CASE WHEN amount < 0 AND type<>'expense' THEN -amount END),0) AS outflow,
         COUNT(CASE WHEN type='expense' THEN 1 END) AS exp_count
-    FROM wl_transactions WHERE wallet_id=? AND voided=0 AND txn_date BETWEEN ? AND ?");
+    FROM wl_transactions WHERE wallet_id=? AND voided=0 AND type<>'opening' AND txn_date BETWEEN ? AND ?");
 $st->execute([$wallet['id'], $from, $to]);
 $p = $st->fetch();
 $closing = $opening + $p['inflow'] - $p['spent'] - $p['outflow'];
@@ -61,7 +63,10 @@ require __DIR__ . '/includes/header.php';
   <div class="stat"><div class="lbl">↩️ تحويلات صادرة / سحب</div><div class="val num"><?= e(money($p['outflow'])) ?></div></div>
 </div>
 
-<?php if ($admin || (int)$wallet['user_id'] === (int)$me['id']): ?>
+<?php if (!empty($wallet['archived'])): ?>
+  <div class="alert alert-info">📦 هذه المحفظة مؤرشفة منذ <span class="num"><?= e(substr((string)$wallet['archived_at'], 0, 10)) ?></span> — السجل للعرض فقط.
+    <?php if ($admin): ?><a href="archive.php?wallet=<?= (int)$wallet['id'] ?>">استعادة</a><?php endif; ?></div>
+<?php elseif ($admin || (int)$wallet['user_id'] === (int)$me['id']): ?>
 <div class="actions" style="margin-bottom:16px">
   <?php if ($admin && !$wallet['is_main']): ?>
     <a class="btn" href="fund.php?op=topup&wallet=<?= (int)$wallet['id'] ?>">💸 تغذية هذه المحفظة</a>
@@ -71,6 +76,10 @@ require __DIR__ . '/includes/header.php';
     <a class="btn btn-light" href="fund.php?op=topup">💸 تغذية محفظة</a>
   <?php endif; ?>
   <a class="btn btn-light" href="expense.php<?= $admin ? '?wallet=' . (int)$wallet['id'] : '' ?>">➖ تسجيل مصروف</a>
+  <?php if ($admin): ?>
+    <a class="btn btn-light" href="opening.php?wallet=<?= (int)$wallet['id'] ?>">📌 رصيد أول المدة</a>
+    <?php if (!$wallet['is_main']): ?><a class="btn btn-gray" href="archive.php?wallet=<?= (int)$wallet['id'] ?>">📦 تسليم العهدة</a><?php endif; ?>
+  <?php endif; ?>
   <a class="btn btn-gray" href="transactions.php?wallet=<?= (int)$wallet['id'] ?>&from=<?= e($from) ?>&to=<?= e($to) ?>&export=csv">⬇️ تصدير CSV</a>
 </div>
 <?php endif; ?>

@@ -21,6 +21,7 @@ if ($me['role'] === 'admin') {
         $monthFunded += (float)$w['month_in'];
     }
 
+    $archivedCount = (int)$pdo->query("SELECT COUNT(*) FROM wl_wallets WHERE archived = 1")->fetchColumn();
     $catTotals = wlCategoryTotals($pdo, $monthFrom, $monthTo);
     $rows      = wlTxnQuery($pdo, [], 12);
     $issues    = wlIntegrity($pdo);
@@ -75,10 +76,11 @@ require __DIR__ . '/includes/header.php';
     <a href="expense.php"><span>➖</span>تسجيل مصروف</a>
     <a href="transactions.php?from=<?= e($monthFrom) ?>&to=<?= e($monthTo) ?>"><span>📊</span>تقرير الشهر</a>
     <a href="users.php"><span>👥</span>إضافة مستخدم</a>
+    <a href="opening.php"><span>📌</span>رصيد أول المدة</a>
   </div>
 
   <div class="card">
-    <h2>👛 المحافظ</h2>
+    <h2>👛 المحافظ<?php if ($archivedCount): ?> <a class="btn btn-gray btn-sm" style="float:left" href="users.php#archived">📦 المؤرشفة (<?= $archivedCount ?>)</a><?php endif; ?></h2>
     <?php if (!$wallets): ?>
       <div class="empty">لا توجد محافظ بعد — <a href="users.php">أضف مستخدماً</a> وستُنشأ محفظته تلقائياً</div>
     <?php else: ?>
