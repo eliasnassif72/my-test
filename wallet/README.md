@@ -22,9 +22,9 @@
 ## التركيب على السيرفر (cPanel)
 
 1. **cPanel ← MySQL Databases:** أنشئ قاعدة بيانات ومستخدماً واربطهما بكل الصلاحيات (مثال: `perfecti_wallet`).
-2. ارفع مجلد `wallet/` كاملاً إلى `public_html/wallet/` ← فيصبح الرابط `https://perfectionsyria.net/wallet`
+2. ارفع محتوى مجلد `wallet/` إلى جذر الدومين الفرعي (الحالي: `public_html/wallet.perfectionsyria.net` ← `https://wallet.perfectionsyria.net`). صلاحيات المجلد نفسه **755** والملفات **644** — المجلد الذي يُنشئه cPanel للدومين الفرعي قد يكون 750 فيعطي 403.
 3. انسخ `config.sample.php` باسم **`config.php`** وعدّل `DB_NAME / DB_USER / DB_PASS`.
-4. افتح `https://perfectionsyria.net/wallet/install.php` ← أنشئ حساب مدير النظام. (الصفحة تُقفل تلقائياً بعد إنشاء المدير.)
+4. افتح `https://wallet.perfectionsyria.net/start.php` (اسمه ليس install.php لأن إعدادات السيرفر تحجب هذا الاسم) ← أنشئ حساب مدير النظام. (الصفحة تُقفل تلقائياً بعد إنشاء المدير.)
 5. سجّل الدخول ← **المستخدمون** ← أضف المستخدمين (تُنشأ محفظة لكل واحد تلقائياً).
 6. **تغذية / إيداع** ← أودع في الرئيسية ثم غذِّ المحافظ.
 
@@ -53,7 +53,7 @@
 ```
 wallet/
 ├── index.php          ← تحويل للدخول/الرئيسية
-├── install.php        ← تثبيت لمرة واحدة
+├── start.php        ← تثبيت لمرة واحدة
 ├── login.php / logout.php / profile.php
 ├── dashboard.php      ← داشبورد المدير والمستخدم
 ├── wallet.php         ← لوحة محفظة: كشف حساب شهري + التصنيفات
