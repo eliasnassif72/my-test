@@ -9,6 +9,14 @@ if (!$wallet || $wallet['is_main']) {
     redirect('users.php');
 }
 
+// محفظة شخصية لمدير: تُؤرشف لكن حسابه لا يُوقف
+$ownerAdmin = false;
+if ($wallet['user_id']) {
+    $st = $pdo->prepare("SELECT role FROM wl_users WHERE id = ?");
+    $st->execute([(int)$wallet['user_id']]);
+    $ownerAdmin = $st->fetchColumn() === 'admin';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
     try {
@@ -20,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tr = wlGetWallet($pdo, (int)post('treasury'));
         $fx = post('fx') !== '' ? parseRate(post('fx')) : null;
         $settled = wlArchiveWallet($pdo, $wallet['id'], (int)post('treasury'), $fx, post('note'), $me['id']);
-        $msg = 'تمت أرشفة «' . $wallet['name'] . '» وإيقاف حسابه';
+        $msg = 'تمت أرشفة «' . $wallet['name'] . '»' . ($ownerAdmin ? '' : ' وإيقاف حسابه');
         if ($settled > 0) {
             $msg .= ' — أُرجع ' . money($settled, true, $wallet['currency']) . ' إلى «' . $tr['name'] . '»';
         } elseif ($settled < 0) {
@@ -70,7 +78,11 @@ require __DIR__ . '/includes/header.php';
     <?php else: ?>
       <li>الرصيد صفر — لا حاجة لتسوية.</li>
     <?php endif; ?>
-    <li>إخفاء المحفظة من الداشبورد والقوائم وإيقاف حساب الدخول.</li>
+    <?php if ($ownerAdmin): ?>
+      <li>إخفاء المحفظة من الداشبورد والقوائم. <b>حساب الدخول يبقى فعّالاً</b> لأن صاحبها مدير نظام.</li>
+    <?php else: ?>
+      <li>إخفاء المحفظة من الداشبورد والقوائم وإيقاف حساب الدخول.</li>
+    <?php endif; ?>
     <li>الإبقاء على كامل سجل الحركات للتدقيق، مع إمكانية الاستعادة لاحقاً.</li>
   </ol>
   <p class="sub">إذا سلّم جزءاً من العهدة كمصاريف لم تُسجّل بعد، سجّلها أولاً من «تسجيل مصروف» قبل الأرشفة.</p>

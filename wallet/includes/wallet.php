@@ -413,8 +413,9 @@ function wlArchiveWallet(PDO $pdo, $walletId, $treasuryId, $fx, $note, $by)
             wlPostTransfer($pdo, $m, $w, $amtM, -$bal, $fx, $date, $note . ' (تسوية مستحق له)', $by);
         }
         $pdo->prepare("UPDATE wl_wallets SET archived = 1, archived_at = NOW(), active = 0 WHERE id = ?")->execute([$w['id']]);
+        // حساب المدير لا يُوقف أبداً عند أرشفة محفظته الشخصية — وإلا يُقفل خارج النظام
         if ($w['user_id']) {
-            $pdo->prepare("UPDATE wl_users SET active = 0 WHERE id = ?")->execute([$w['user_id']]);
+            $pdo->prepare("UPDATE wl_users SET active = 0 WHERE id = ? AND role <> 'admin'")->execute([$w['user_id']]);
         }
         return $bal;
     });
