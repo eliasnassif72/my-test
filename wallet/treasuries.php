@@ -136,7 +136,8 @@ require __DIR__ . '/includes/header.php';
         <td><input form="<?= $fid ?>" type="text" name="cname" value="<?= e($c['name']) ?>"></td>
         <td style="width:90px"><input form="<?= $fid ?>" type="text" name="symbol" value="<?= e($c['symbol']) ?>"></td>
         <td style="width:170px"><?php if ($isBase): ?>1<?php else: ?>
-          <input form="<?= $fid ?>" type="text" name="rate" inputmode="decimal" value="<?= (float)$c['rate'] > 0 ? e(plainNumber($c['rate'])) : '' ?>" placeholder="غير محدد" style="direction:ltr;text-align:center<?= (float)$c['rate'] <= 0 ? ';border-color:#F87171' : '' ?>">
+          <input form="<?= $fid ?>" type="text" name="rate" inputmode="decimal" value="<?= (float)$c['rate'] > 0 ? e(plainNumber($c['rate'])) : '' ?>" placeholder="غير محدد" style="direction:ltr;text-align:center<?= (float)$c['rate'] <= 0 || (float)$c['rate'] < 1 ? ';border-color:#F87171' : '' ?>">
+          <?php if ((float)$c['rate'] > 0 && (float)$c['rate'] < 1): ?><div class="hint neg">⚠️ أقل من 1 — يبدو معكوساً: اكتب كم <?= e(currencySymbol($base)) ?> يساوي 1 <?= e($c['symbol']) ?></div><?php endif; ?>
         <?php endif; ?></td>
         <td class="sub num"><?= e($c['updated_at'] ? substr($c['updated_at'], 0, 16) : '—') ?></td>
         <td><form id="<?= $fid ?>" method="post"><?= csrfField() ?><input type="hidden" name="action" value="save_currency"><input type="hidden" name="code" value="<?= e($c['code']) ?>"><button class="btn btn-sm">حفظ</button></form></td>

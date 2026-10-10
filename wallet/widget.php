@@ -14,10 +14,12 @@ header('Cache-Control: no-store');
 $from = date('Y-m-01');
 $to   = date('Y-m-t');
 $rows = wlWalletSummaries($pdo, $from, $to);
-$treas = []; $list = []; $sumW = 0; $sumSpent = 0;
+// المجاميع لكل عملة على حدة
+$treas = []; $list = []; $sumW = []; $sumSpent = [];
 foreach ($rows as $r) {
-    $sumSpent += $r['month_spent_base'];
-    if ((int)$r['is_main'] === 1) { $treas[] = $r; } else { $list[] = $r; $sumW += $r['balance'] * currencyRate($r['currency']); }
+    $c = $r['currency'];
+    if ((float)$r['month_spent'] != 0) $sumSpent[$c] = (isset($sumSpent[$c]) ? $sumSpent[$c] : 0) + (float)$r['month_spent'];
+    if ((int)$r['is_main'] === 1) { $treas[] = $r; } else { $list[] = $r; $sumW[$c] = (isset($sumW[$c]) ? $sumW[$c] : 0) + (float)$r['balance']; }
 }
 ?><!doctype html>
 <html lang="ar" dir="rtl">
@@ -38,8 +40,12 @@ foreach ($rows as $r) {
     <?php endforeach; ?>
   </div>
   <div class="grid g2" style="margin-bottom:12px">
-    <div class="stat blue"><div class="lbl">👛 أرصدة الموظفين (<?= count($list) ?>) — بما يعادل</div><div class="val num"><?= e(money($sumW)) ?></div></div>
-    <div class="stat"><div class="lbl">➖ مصاريف <?= e(arMonthName(date('Y-m'))) ?></div><div class="val num neg"><?= e(money($sumSpent)) ?></div></div>
+    <div class="stat blue"><div class="lbl">👛 أرصدة الموظفين (<?= count($list) ?>)</div>
+      <?php if (!$sumW): ?><div class="val num">0</div><?php endif; ?>
+      <?php foreach ($sumW as $c => $v): ?><div class="val num" style="font-size:<?= count($sumW) > 1 ? '1.15rem' : '1.45rem' ?>"><?= e(money($v, true, $c)) ?></div><?php endforeach; ?></div>
+    <div class="stat"><div class="lbl">➖ مصاريف <?= e(arMonthName(date('Y-m'))) ?></div>
+      <?php if (!$sumSpent): ?><div class="val num neg">0</div><?php endif; ?>
+      <?php foreach ($sumSpent as $c => $v): ?><div class="val num neg" style="font-size:<?= count($sumSpent) > 1 ? '1.15rem' : '1.45rem' ?>"><?= e(money($v, true, $c)) ?></div><?php endforeach; ?></div>
   </div>
   <div class="grid wallets">
     <?php foreach ($list as $w): ?>

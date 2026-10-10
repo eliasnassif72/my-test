@@ -9,30 +9,40 @@ $monthName = arMonthName(date('Y-m'));
 if ($me['role'] === 'admin') {
     $wallets = [];
     $treasuries = [];
-    $staffByCur = [];   // مجموع أرصدة الموظفين لكل عملة
-    $treasTotalBase = 0; $monthSpent = 0; $monthFunded = 0;
+    // كل المجاميع لكل عملة على حدة (الدولار وحده والليرة وحدها) — بدون تحويل
+    $treasByCur = []; $staffByCur = []; $spentByCur = []; $fundedByCur = [];
     foreach (wlWalletSummaries($pdo, $monthFrom, $monthTo) as $w) {
-        $monthSpent += (float)$w['month_spent_base'];
         if ((int)$w['is_main'] === 1) {
             $treasuries[] = $w;
-            $treasTotalBase += (float)$w['balance'] * currencyRate($w['currency']);
+            $treasByCur[$w['currency']] = (isset($treasByCur[$w['currency']]) ? $treasByCur[$w['currency']] : 0) + (float)$w['balance'];
             continue;
         }
         $wallets[] = $w;
         $staffByCur[$w['currency']] = (isset($staffByCur[$w['currency']]) ? $staffByCur[$w['currency']] : 0) + (float)$w['balance'];
-        $monthFunded += (float)$w['month_in_base'];
     }
-    $multiCur = count(array_unique(array_column(array_merge($treasuries, $wallets), 'currency'))) > 1;
     // مجاميع الشهر تشمل كل المحافظ (حتى المؤرشفة) لتطابق توزيع التصنيفات
-    $st = $pdo->prepare("SELECT
-            COALESCE(SUM(CASE WHEN t.type='expense' THEN -COALESCE(t.base_amount,t.amount) END),0) AS spent,
-            COALESCE(SUM(CASE WHEN t.type='transfer_in' AND w.is_main=0 THEN COALESCE(t.base_amount,t.amount) END),0) AS funded
+    $st = $pdo->prepare("SELECT w.currency,
+            COALESCE(SUM(CASE WHEN t.type='expense' THEN -t.amount END),0) AS spent,
+            COALESCE(SUM(CASE WHEN t.type='transfer_in' AND w.is_main=0 THEN t.amount END),0) AS funded
         FROM wl_transactions t JOIN wl_wallets w ON w.id = t.wallet_id
-        WHERE t.voided = 0 AND t.txn_date BETWEEN ? AND ?");
+        WHERE t.voided = 0 AND t.txn_date BETWEEN ? AND ?
+        GROUP BY w.currency");
     $st->execute([$monthFrom, $monthTo]);
-    $mt = $st->fetch();
-    $monthSpent  = (float)$mt['spent'];
-    $monthFunded = (float)$mt['funded'];
+    foreach ($st->fetchAll() as $mt) {
+        if ((float)$mt['spent'] != 0)  $spentByCur[$mt['currency']]  = (float)$mt['spent'];
+        if ((float)$mt['funded'] != 0) $fundedByCur[$mt['currency']] = (float)$mt['funded'];
+    }
+    // ترتيب ثابت: العملة الأساسية أولاً ثم حسب جدول العملات
+    $curOrder = array_keys(wlCurrencies());
+    $sortCur = function (array $a) use ($curOrder) {
+        uksort($a, function ($x, $y) use ($curOrder) {
+            $ix = array_search($x, $curOrder); $iy = array_search($y, $curOrder);
+            return ($ix === false ? 999 : $ix) - ($iy === false ? 999 : $iy);
+        });
+        return $a;
+    };
+    $treasByCur = $sortCur($treasByCur); $staffByCur = $sortCur($staffByCur);
+    $spentByCur = $sortCur($spentByCur); $fundedByCur = $sortCur($fundedByCur);
 
     $archivedCount = (int)$pdo->query("SELECT COUNT(*) FROM wl_wallets WHERE archived = 1")->fetchColumn();
     $catTotals = wlCategoryTotals($pdo, $monthFrom, $monthTo);
@@ -77,25 +87,32 @@ require __DIR__ . '/includes/header.php';
     <?php endforeach; ?>
   </div>
 
+  <?php
+  // سطر لكل عملة داخل البطاقة
+  $curLines = function (array $byCur, $cls = '') {
+      if (!$byCur) { echo '<div class="val num ' . $cls . '">0</div>'; return; }
+      $fs = count($byCur) > 1 ? '1.15rem' : '1.45rem';
+      foreach ($byCur as $cur => $sum) {
+          echo '<div class="val num ' . $cls . '" style="font-size:' . $fs . '">' . e(money($sum, true, $cur)) . '</div>';
+      }
+  };
+  ?>
   <div class="grid g4" style="margin-bottom:16px">
     <div class="stat blue">
-      <div class="lbl">🏦 مجموع المحافظ الرئيسية<?= $multiCur ? ' (بما يعادل)' : '' ?></div>
-      <div class="val num"><?= e(money($treasTotalBase)) ?></div>
+      <div class="lbl">🏦 مجموع المحافظ الرئيسية</div>
+      <?php $curLines($treasByCur); ?>
     </div>
     <div class="stat">
       <div class="lbl">👛 أرصدة الموظفين (<?= count($wallets) ?>)</div>
-      <?php if (!$staffByCur): ?><div class="val num">0</div><?php endif; ?>
-      <?php foreach ($staffByCur as $cur => $sum): ?>
-        <div class="val num" style="font-size:<?= count($staffByCur) > 1 ? '1.15rem' : '1.45rem' ?>"><?= e(money($sum, true, $cur)) ?></div>
-      <?php endforeach; ?>
+      <?php $curLines($staffByCur); ?>
     </div>
     <div class="stat">
-      <div class="lbl">➖ مصاريف <?= e($monthName) ?><?= $multiCur ? ' (بما يعادل)' : '' ?></div>
-      <div class="val num neg"><?= e(money($monthSpent)) ?></div>
+      <div class="lbl">➖ مصاريف <?= e($monthName) ?></div>
+      <?php $curLines($spentByCur, 'neg'); ?>
     </div>
     <div class="stat">
-      <div class="lbl">💸 تغذية الموظفين هذا الشهر<?= $multiCur ? ' (بما يعادل)' : '' ?></div>
-      <div class="val num pos"><?= e(money($monthFunded)) ?></div>
+      <div class="lbl">💸 تغذية الموظفين هذا الشهر</div>
+      <?php $curLines($fundedByCur, 'pos'); ?>
     </div>
   </div>
 

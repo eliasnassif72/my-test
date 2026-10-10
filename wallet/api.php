@@ -31,6 +31,8 @@ $rows = wlWalletSummaries($pdo, $from, $to, false, get('wallet') !== '' ? (int)g
 $treasuries = [];
 $wallets = [];
 $byCur = [];
+$treasByCur = [];
+$expByCur = [];
 $totalTreasBase = 0;
 $totalUsersBase = 0;
 $totalExpBase = 0;
@@ -50,9 +52,13 @@ foreach ($rows as $r) {
         'last_activity'  => $r['last_activity'],
     ];
     $totalExpBase += (float)$r['month_spent_base'];
+    if ((float)$r['month_spent'] != 0) {
+        $expByCur[$r['currency']] = (isset($expByCur[$r['currency']]) ? $expByCur[$r['currency']] : 0) + (float)$r['month_spent'];
+    }
     if ((int)$r['is_main'] === 1) {
         $treasuries[] = $item;
         $totalTreasBase += $item['balance_base'];
+        $treasByCur[$r['currency']] = (isset($treasByCur[$r['currency']]) ? $treasByCur[$r['currency']] : 0) + $item['balance'];
     } else {
         $wallets[] = $item;
         $totalUsersBase += $item['balance_base'];
@@ -81,6 +87,8 @@ echo json_encode([
     'main_wallet'   => $treasuries ? $treasuries[0] : null,
     'wallets'       => $wallets,
     'totals'        => [
+        'treasuries_balance_by_currency' => $treasByCur,
+        'month_expenses_by_currency'  => $expByCur,
         'treasuries_balance_base'     => $totalTreasBase,
         'wallets_balance_base'        => $totalUsersBase,
         'wallets_balance_by_currency' => $byCur,
