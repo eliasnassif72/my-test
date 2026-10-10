@@ -12,6 +12,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'regen_key') {
         setSetting($pdo, 'api_key', bin2hex(random_bytes(20)));
         flash('success', 'تم توليد مفتاح جديد — حدّث الرابط في لوحة elias controle');
+    } elseif ($action === 'push_url') {
+        $u = trim(post('push_url'));
+        if ($u !== '' && !preg_match('~^https://[^\s]+$~i', $u)) {
+            flash('error', 'الرابط يجب أن يبدأ بـ https://');
+            redirect('settings.php#push');
+        }
+        setSetting($pdo, 'dashboard_push_url', $u);
+        if ($u !== '') {
+            $r = wlPushSnapshot($pdo);
+            flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'تم الحفظ وإرسال الأرصدة إلى لوحة Control Room ✓' : 'تم الحفظ لكن الإرسال فشل: ' . $r['error']);
+        } else {
+            flash('success', 'تم إيقاف الإرسال إلى لوحة Control Room');
+        }
+        redirect('settings.php#push');
+    } elseif ($action === 'push_now') {
+        $r = wlPushSnapshot($pdo);
+        flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'تم إرسال الأرصدة إلى لوحة Control Room ✓' : 'فشل الإرسال: ' . $r['error']);
+        redirect('settings.php#push');
     } elseif ($action === 'fix_balances') {
         $n = wlRecalcBalances($pdo);
         flash('success', 'تمت إعادة احتساب الأرصدة من سجل الحركات (' . (int)$n . ' محفظة عُدّلت)');
@@ -25,6 +43,8 @@ $host   = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost';
 $base   = ($https ? 'https' : 'http') . '://' . $host . rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
 $key    = setting($pdo, 'api_key');
 $issues = wlIntegrity($pdo);
+$pushUrl  = (string)setting($pdo, 'dashboard_push_url', '');
+$pushLast = json_decode((string)setting($pdo, 'dashboard_push_last', ''), true);
 
 $pageTitle = 'الإعدادات';
 $active = 'settings';
@@ -73,6 +93,22 @@ require __DIR__ . '/includes/header.php';
   <code class="key">GET <?= e($base) ?>/api.php
 Header: X-API-KEY: <?= e($key) ?></code>
   <p class="hint">أو <span dir="ltr">?key=…</span> في الرابط. اختياري: <span dir="ltr">&amp;wallet=ID</span> لمحفظة واحدة، <span dir="ltr">&amp;month=YYYY-MM</span> لمصاريف شهر محدد. تعمل مع n8n (HTTP Request).</p>
+
+  <h3 style="font-size:1rem" id="push">3) الإرسال التلقائي إلى لوحة Control Room</h3>
+  <p class="hint">بعد كل حركة يرسل البرنامج الأرصدة وآخر الحركات إلى رابط n8n هذا (لأن السيرفر لا يقبل اتصالات من n8n). ضع الرابط مرة واحدة.</p>
+  <form method="post" class="filters" style="grid-template-columns:1fr auto">
+    <?= csrfField() ?><input type="hidden" name="action" value="push_url">
+    <div class="form-row"><input type="text" name="push_url" dir="ltr" value="<?= e($pushUrl) ?>" placeholder="https://eliasnassif72.app.n8n.cloud/webhook/..."></div>
+    <div class="form-row"><button class="btn btn-sm">حفظ وإرسال</button></div>
+  </form>
+  <?php if ($pushUrl !== ''): ?>
+    <div class="actions" style="align-items:center;margin:8px 0 14px">
+      <form method="post"><?= csrfField() ?><input type="hidden" name="action" value="push_now"><button class="btn btn-light btn-sm">📤 إرسال الآن</button></form>
+      <?php if ($pushLast): ?>
+        <span class="sub">آخر إرسال: <span class="num"><?= e($pushLast['at']) ?></span> — <?= !empty($pushLast['ok']) ? '<span class="pos">نجح ✓</span>' : '<span class="neg">فشل: ' . e($pushLast['error']) . '</span>' ?></span>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
 
   <form method="post" data-confirm="توليد مفتاح جديد سيوقف الروابط القديمة فوراً. متابعة؟">
     <?= csrfField() ?><input type="hidden" name="action" value="regen_key"><button class="btn btn-red btn-sm">توليد مفتاح جديد</button>

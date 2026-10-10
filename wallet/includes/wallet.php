@@ -133,6 +133,7 @@ function wlRun(PDO $pdo, $fn)
     try {
         $r = $fn();
         $pdo->commit();
+        wlMarkDirty();
         return $r;
     } catch (Exception $ex) {
         $pdo->rollBack();

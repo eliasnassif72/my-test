@@ -39,6 +39,9 @@ try {
 require __DIR__ . '/schema.php';
 require __DIR__ . '/functions.php';
 require __DIR__ . '/wallet.php';
+require __DIR__ . '/snapshot.php';
+require __DIR__ . '/push.php';
+register_shutdown_function(function () use ($pdo) { wlPushOnShutdown($pdo); });
 
 try {
     wlSchemaMigrate($pdo);

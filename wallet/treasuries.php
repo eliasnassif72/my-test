@@ -5,6 +5,7 @@ $me = requireAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrfCheck();
+    wlMarkDirty(); // الأسماء والمحافظ تظهر في لوحة Control Room
     $action = post('action');
     try {
         if ($action === 'create_treasury') {
