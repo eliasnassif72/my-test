@@ -81,6 +81,30 @@ foreach (wlCurrencies() as $c) {
     $currencies[$c['code']] = ['name' => $c['name'], 'symbol' => $c['symbol'], 'rate' => (float)$c['rate']];
 }
 
+// آخر الحركات (7 أيام) مع توقيت قاعدة البيانات — ليحسب أي داشبورد خارجي «ما تغيّر منذ آخر اطلاع» بنفسه
+$dbNow = (string)$pdo->query("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')")->fetchColumn();
+$recent = [];
+$st = $pdo->query("SELECT t.id, t.wallet_id, t.type, t.amount, t.note, t.voided,
+        DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+        DATE_FORMAT(t.voided_at, '%Y-%m-%d %H:%i:%s') AS voided_at, c.name AS category
+    FROM wl_transactions t LEFT JOIN wl_categories c ON c.id = t.category_id
+    WHERE t.created_at >= NOW() - INTERVAL 7 DAY OR t.voided_at >= NOW() - INTERVAL 7 DAY
+    ORDER BY t.id DESC LIMIT 300");
+foreach ($st->fetchAll() as $m) {
+    $recent[] = [
+        'id'         => (int)$m['id'],
+        'wallet_id'  => (int)$m['wallet_id'],
+        'type'       => $m['type'],
+        'type_label' => txnTypeLabel($m['type']),
+        'amount'     => (float)$m['amount'],
+        'category'   => $m['category'],
+        'note'       => $m['note'],
+        'voided'     => (int)$m['voided'] === 1,
+        'created_at' => $m['created_at'],
+        'voided_at'  => $m['voided_at'],
+    ];
+}
+
 $cats = [];
 foreach (wlCategoryTotals($pdo, $from, $to, get('wallet') !== '' ? (int)get('wallet') : null) as $c) {
     $cats[] = ['category' => $c['name'], 'icon' => $c['icon'], 'total' => (float)$c['total'], 'count' => (int)$c['cnt']];
@@ -94,6 +118,7 @@ echo json_encode([
     'currencies'    => $currencies,
     'month'         => $ym,
     'generated_at'  => date('c'),
+    'db_now'        => $dbNow,
     'changes_since' => $since,
     'changed_count' => count(array_filter(array_merge($treasuries, $wallets), function ($i) { return $i['changed']; })),
     'treasuries'    => $treasuries,
@@ -112,4 +137,5 @@ echo json_encode([
         'month_expenses'  => $totalExpBase,
     ],
     'expenses_by_category' => $cats,
+    'recent_moves'  => $recent,
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
