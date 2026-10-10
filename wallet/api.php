@@ -26,6 +26,13 @@ if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $ym)) {
 $from = $ym . '-01';
 $to   = date('Y-m-t', strtotime($from));
 
+// إشارات التعديل: منذ آخر «تم الاطلاع» في الويدجت، أو ?since=YYYY-MM-DD HH:MM:SS
+$since = get('since');
+if (!preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $since)) {
+    $since = wlWidgetSeen($pdo);
+}
+$changes = wlChangesSince($pdo, $since);
+
 $rows = wlWalletSummaries($pdo, $from, $to, false, get('wallet') !== '' ? (int)get('wallet') : null);
 
 $treasuries = [];
@@ -50,6 +57,10 @@ foreach ($rows as $r) {
         'month_in'       => (float)$r['month_in'],
         'active'         => (int)$r['active'] === 1,
         'last_activity'  => $r['last_activity'],
+        'changed'        => isset($changes[(int)$r['id']]),
+        'new_moves'      => isset($changes[(int)$r['id']]) ? $changes[(int)$r['id']]['moves'] : 0,
+        'change_amount'  => isset($changes[(int)$r['id']]) ? $changes[(int)$r['id']]['delta'] : 0,
+        'changed_at'     => isset($changes[(int)$r['id']]) ? $changes[(int)$r['id']]['last_at'] : null,
     ];
     $totalExpBase += (float)$r['month_spent_base'];
     if ((float)$r['month_spent'] != 0) {
@@ -83,6 +94,8 @@ echo json_encode([
     'currencies'    => $currencies,
     'month'         => $ym,
     'generated_at'  => date('c'),
+    'changes_since' => $since,
+    'changed_count' => count(array_filter(array_merge($treasuries, $wallets), function ($i) { return $i['changed']; })),
     'treasuries'    => $treasuries,
     'main_wallet'   => $treasuries ? $treasuries[0] : null,
     'wallets'       => $wallets,

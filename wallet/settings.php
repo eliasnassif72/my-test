@@ -65,8 +65,9 @@ require __DIR__ . '/includes/header.php';
   <p class="sub">لعرض أرصدة المحافظ داخل لوحة elias controle (أو أي لوحة أخرى) استخدم أحد الخيارين. الرابط يحتوي مفتاحاً سرياً — لا تشاركه علناً.</p>
 
   <h3 style="font-size:1rem">1) ويدجت جاهز (iframe) — الأسهل</h3>
-  <code class="key">&lt;iframe src="<?= e($base) ?>/widget.php?key=<?= e($key) ?>" style="width:100%;height:420px;border:0"&gt;&lt;/iframe&gt;</code>
+  <code class="key">&lt;iframe src="<?= e($base) ?>/widget.php?key=<?= e($key) ?>" style="width:100%;height:640px;border:0"&gt;&lt;/iframe&gt;</code>
   <p><a class="btn btn-light btn-sm" target="_blank" href="widget.php?key=<?= e($key) ?>">معاينة الويدجت</a></p>
+  <p class="hint">🔔 المحفظة التي جرت عليها حركة أو إلغاء منذ آخر اطلاع تظهر بإطار برتقالي مع صافي التغيّر وآخر الحركات، وزر «✓ تم الاطلاع» يصفّر الإشارات.</p>
 
   <h3 style="font-size:1rem">2) API بصيغة JSON</h3>
   <code class="key">GET <?= e($base) ?>/api.php

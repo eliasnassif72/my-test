@@ -44,15 +44,17 @@
 
 - **ويدجت (الأسهل):**
   ```html
-  <iframe src="https://perfectionsyria.net/wallet/widget.php?key=KEY" style="width:100%;height:420px;border:0"></iframe>
+  <iframe src="https://wallet.perfectionsyria.net/widget.php?key=KEY" style="width:100%;height:640px;border:0"></iframe>
   ```
 - **API JSON** (لـ n8n أو أي لوحة):
   ```
-  GET https://perfectionsyria.net/wallet/api.php
+  GET https://wallet.perfectionsyria.net/api.php
   Header: X-API-KEY: KEY
-  اختياري: ?wallet=ID  ?month=2026-10
+  اختياري: ?wallet=ID  ?month=2026-10  ?since=2026-10-01 08:00:00
   ```
-  يُرجع: رصيد الرئيسية، كل محفظة (الرصيد، مصاريف الشهر، الوارد، آخر حركة)، الإجماليات، والمصاريف حسب التصنيف.
+  يُرجع: رصيد الرئيسية، كل محفظة (الرصيد، مصاريف الشهر، الوارد، آخر حركة، `changed` / `new_moves` / `change_amount`)، الإجماليات لكل عملة، والمصاريف حسب التصنيف.
+
+**🔔 إشارة التعديل:** أي محفظة جرت عليها حركة جديدة أو إلغاء منذ آخر «✓ تم الاطلاع» تظهر في الويدجت بإطار برتقالي مع عدد الحركات وصافي التغيّر وآخر 3 حركات. الويدجت يتحدّث كل دقيقتين.
 
 ## الملفات
 

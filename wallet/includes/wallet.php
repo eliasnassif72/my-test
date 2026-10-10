@@ -347,6 +347,55 @@ function wlWalletSummaries(PDO $pdo, $from, $to, $activeOnly = false, $walletId 
     return $st->fetchAll();
 }
 
+// آخر اطلاع على الويدجت (توقيت قاعدة البيانات) — أول مرة: بداية اليوم
+function wlWidgetSeen(PDO $pdo)
+{
+    $v = (string)setting($pdo, 'widget_seen_at', '');
+    if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v)) {
+        $v = (string)$pdo->query("SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d 00:00:00')")->fetchColumn();
+    }
+    return $v;
+}
+
+function wlWidgetAck(PDO $pdo)
+{
+    setSetting($pdo, 'widget_seen_at', (string)$pdo->query("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')")->fetchColumn());
+}
+
+// التعديلات على كل محفظة منذ وقت معيّن: حركات جديدة أو إلغاءات.
+// delta = صافي تغيّر الرصيد (الجديد غير الملغى − ما أُلغي من حركات سابقة)
+function wlChangesSince(PDO $pdo, $since)
+{
+    $st = $pdo->prepare("SELECT wallet_id,
+            SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END) + SUM(CASE WHEN voided = 1 AND voided_at > ? AND created_at <= ? THEN 1 ELSE 0 END) AS moves,
+            COALESCE(SUM(CASE WHEN created_at > ? AND voided = 0 THEN amount END), 0)
+              - COALESCE(SUM(CASE WHEN voided = 1 AND voided_at > ? AND created_at <= ? THEN amount END), 0) AS delta,
+            GREATEST(COALESCE(MAX(CASE WHEN created_at > ? THEN created_at END), '1970-01-01'),
+                     COALESCE(MAX(CASE WHEN voided = 1 AND voided_at > ? THEN voided_at END), '1970-01-01')) AS last_at
+        FROM wl_transactions
+        WHERE created_at > ? OR (voided = 1 AND voided_at > ?)
+        GROUP BY wallet_id");
+    $st->execute([$since, $since, $since, $since, $since, $since, $since, $since, $since, $since]);
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $out[(int)$r['wallet_id']] = ['moves' => (int)$r['moves'], 'delta' => round((float)$r['delta'], 2), 'last_at' => $r['last_at']];
+    }
+    if ($out) {
+        // آخر 3 حركات لكل محفظة متغيّرة للعرض
+        $st = $pdo->prepare("SELECT t.wallet_id, t.type, t.amount, t.note, t.voided, c.name AS cat
+            FROM wl_transactions t LEFT JOIN wl_categories c ON c.id = t.category_id
+            WHERE t.created_at > ? OR (t.voided = 1 AND t.voided_at > ?)
+            ORDER BY GREATEST(t.created_at, COALESCE(t.voided_at, t.created_at)) DESC, t.id DESC");
+        $st->execute([$since, $since]);
+        foreach ($st->fetchAll() as $r) {
+            $w = (int)$r['wallet_id'];
+            if (!isset($out[$w]['items'])) $out[$w]['items'] = [];
+            if (count($out[$w]['items']) < 3) $out[$w]['items'][] = $r;
+        }
+    }
+    return $out;
+}
+
 // رصيد أول المدة — قيد افتتاحي لمطابقة الحسابات القديمة (لا يُخصم من الرئيسية).
 // موجب = مبلغ في عهدة صاحب المحفظة، سالب = مبلغ له على الشركة.
 // إعادة الضبط تُلغي القيد السابق (يبقى ظاهراً كـ«ملغى») وتسجّل الجديد؛ القيمة 0 تحذف الرصيد الافتتاحي.
